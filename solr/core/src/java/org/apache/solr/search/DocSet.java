@@ -151,7 +151,7 @@ public interface DocSet extends RefCount, Cloneable, Closeable /* extends Collec
   /**
    * Takes the docs from this set and sets those bits on the target OpenBitSet.
    * The target should be sized large enough to accommodate all of the documents before calling this method.
-   * @param target
+   * @param target x
    */
   public void setBitsOn(FixedBitSet target);
 

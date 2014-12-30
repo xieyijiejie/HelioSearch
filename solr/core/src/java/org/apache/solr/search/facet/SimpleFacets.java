@@ -17,6 +17,28 @@
 
 package org.apache.solr.search.facet;
 
+import java.io.IOException;
+import java.util.ArrayList;
+import java.util.Collection;
+import java.util.Date;
+import java.util.EnumSet;
+import java.util.HashMap;
+import java.util.IdentityHashMap;
+import java.util.Iterator;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
+import java.util.concurrent.Callable;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.Executor;
+import java.util.concurrent.Future;
+import java.util.concurrent.FutureTask;
+import java.util.concurrent.RunnableFuture;
+import java.util.concurrent.Semaphore;
+import java.util.concurrent.SynchronousQueue;
+import java.util.concurrent.ThreadPoolExecutor;
+import java.util.concurrent.TimeUnit;
+
 import org.apache.lucene.index.AtomicReader;
 import org.apache.lucene.index.DocsEnum;
 import org.apache.lucene.index.Fields;
@@ -26,7 +48,6 @@ import org.apache.lucene.index.Term;
 import org.apache.lucene.index.Terms;
 import org.apache.lucene.index.TermsEnum;
 import org.apache.lucene.search.DocIdSetIterator;
-import org.apache.lucene.search.FieldCache;
 import org.apache.lucene.search.Filter;
 import org.apache.lucene.search.MatchAllDocsQuery;
 import org.apache.lucene.search.Query;
@@ -49,9 +70,11 @@ import org.apache.solr.common.util.NamedList;
 import org.apache.solr.common.util.SimpleOrderedMap;
 import org.apache.solr.common.util.StrUtils;
 import org.apache.solr.core.HS;
+import org.apache.solr.core.SolrCore;
 import org.apache.solr.handler.component.ResponseBuilder;
 import org.apache.solr.request.DocValuesFacets;
 import org.apache.solr.request.IntervalFacets;
+import org.apache.solr.request.IntervalFacets.FacetInterval;
 import org.apache.solr.request.SolrQueryRequest;
 import org.apache.solr.schema.BoolField;
 import org.apache.solr.schema.DateField;
@@ -78,7 +101,6 @@ import org.apache.solr.search.SyntaxError;
 import org.apache.solr.search.field.FieldUtil;
 import org.apache.solr.search.field.LongArray;
 import org.apache.solr.search.field.NativeSortedDocValues;
-import org.apache.solr.search.field.StrLeafValues;
 import org.apache.solr.search.grouping.AbstractAllGroupHeadsCollector;
 import org.apache.solr.search.grouping.GroupingSpecification;
 import org.apache.solr.search.grouping.TermAllGroupsCollector;
@@ -87,30 +109,8 @@ import org.apache.solr.util.BoundedTreeSet;
 import org.apache.solr.util.DateMathParser;
 import org.apache.solr.util.DefaultSolrThreadFactory;
 import org.apache.solr.util.LongPriorityQueue;
-
-import java.io.IOException;
-import java.util.ArrayList;
-import java.util.Collection;
-import java.util.Date;
-import java.util.EnumSet;
-import java.util.HashMap;
-import java.util.IdentityHashMap;
-import java.util.Iterator;
-import java.util.List;
-import java.util.Map;
-import java.util.Set;
-import java.util.concurrent.Callable;
-import java.util.concurrent.ExecutionException;
-import java.util.concurrent.Executor;
-import java.util.concurrent.Future;
-import java.util.concurrent.FutureTask;
-import java.util.concurrent.RunnableFuture;
-import java.util.concurrent.Semaphore;
-import java.util.concurrent.SynchronousQueue;
-import java.util.concurrent.ThreadPoolExecutor;
-import java.util.concurrent.TimeUnit;
-
-import static org.apache.solr.request.IntervalFacets.FacetInterval;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * SimpleFacets for Heliosearch
@@ -140,7 +140,7 @@ public class SimpleFacets {
   public List<Query> subQueries;  // queries for the current path within the subfacets...
   public SimpleFacetStats facetStats;
   protected SimpleFacets parent;
-
+  static final Logger log = LoggerFactory.getLogger(SolrCore.class);
 
   /** refcount of DocSet will not be changed. */
   public SimpleFacets(SolrQueryRequest req,
@@ -996,8 +996,9 @@ public class SimpleFacets {
 
       // SortedDocValues si = FieldCache.DEFAULT.getTermsIndex(searcher.getAtomicReader(), fieldName);
       QueryContext qcontext = QueryContext.newContext(searcher);
+      log.info("====Log By Zhitao==== Time Before GetSortedDocValue " + System.currentTimeMillis());
       SortedDocValues si = FieldUtil.getSortedDocValues(qcontext, sf, null);
-
+      log.info("====Log By Zhitao==== Time After GetSortedDocValue " + System.currentTimeMillis());
       final BytesRef prefixRef;
       if (prefix == null) {
         prefixRef = null;
@@ -1030,8 +1031,9 @@ public class SimpleFacets {
         // final int[] counts = new int[nTerms];
         counts = HS.allocArray(nTerms, HS.INT_SIZE, true);
 
+        log.info("====Log By Zhitao==== Time Before fillCounts " + System.currentTimeMillis());
         if (HS.loaded && si instanceof NativeSortedDocValues && docs instanceof DocSetBaseNative) {
-
+          log.info("====Log By Zhitao==== Native Loaded!");
           DocSetBaseNative base = (DocSetBaseNative)docs;
           LongArray ordArr = ((NativeSortedDocValues)si).getWrappedValues().getOrdArray();
 
@@ -1075,7 +1077,7 @@ public class SimpleFacets {
           }
 
         }
-
+        log.info("====Log By Zhitao==== Time After fillCounts " + System.currentTimeMillis());
 
         // IDEA: we could also maintain a count of "other"... everything that fell outside
         // of the top 'N'
@@ -1083,6 +1085,7 @@ public class SimpleFacets {
         int off = offset;
         int lim = limit >= 0 ? limit : Integer.MAX_VALUE;
 
+        log.info("====Log By Zhitao==== Time Before Sort " + System.currentTimeMillis());
         if (sort.equals(FacetParams.FACET_SORT_COUNT) || sort.equals(FacetParams.FACET_SORT_COUNT_LEGACY)) {
           int maxsize = limit > 0 ? offset + limit : Integer.MAX_VALUE - 1;
           maxsize = Math.min(maxsize, nTerms);
@@ -1140,6 +1143,7 @@ public class SimpleFacets {
             res.add(charsRef.toString(), c);
           }
         }
+        log.info("====Log By Zhitao==== Time After Sort " + System.currentTimeMillis());
       }
 
       if (missing) {

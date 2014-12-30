@@ -50,6 +50,8 @@ import org.apache.solr.search.SolrIndexSearcher;
 import org.apache.solr.search.SortedIntDocSetNative;
 import org.apache.solr.search.field.FieldUtil;
 import org.apache.solr.search.mutable.MutableValueInt;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 public class FacetField extends FacetRequest {
   String field;
@@ -169,7 +171,7 @@ abstract class FacetFieldProcessorFCBase extends FacetFieldProcessor {
   int endTermIndex;
   int nTerms;
   int nDocs;
-
+  static final Logger log = LoggerFactory.getLogger(FacetFieldProcessor.class);
 
   public FacetFieldProcessorFCBase(FacetContext fcontext, FacetField freq, SchemaField sf) {
     super(fcontext, freq, sf);
@@ -178,7 +180,9 @@ abstract class FacetFieldProcessorFCBase extends FacetFieldProcessor {
   @Override
   public void process() throws IOException {
     sf = fcontext.searcher.getSchema().getField(freq.field);
+    Long time1 = System.currentTimeMillis();
     response = getFieldCacheCounts();
+    log.info("====Log By Zhitao==== Time of Total getFieldCacheCounts " + (System.currentTimeMillis() - time1));
   }
 
 
@@ -194,17 +198,24 @@ abstract class FacetFieldProcessorFCBase extends FacetFieldProcessor {
     } else {
       prefixRef = new BytesRef(prefix);
     }
-
+    Long time1 = System.currentTimeMillis();
     findStartAndEndOrds();
-
+    log.info("====Log By Zhitao==== Time of findStartAndEndOrds " + (System.currentTimeMillis() - time1));
+    time1 = System.currentTimeMillis();
     // if we need an extra slot for the "missing" bucket, and it wasn't able to be tacked onto the beginning,
     // then lets add room for it at the end.
     int maxSlots = (freq.missing && startTermIndex != -1) ? nTerms + 1 : nTerms;
     createAccs(nDocs, maxSlots);
+    log.info("====Log By Zhitao==== Time of createAccs " + (System.currentTimeMillis() - time1));
+    time1 = System.currentTimeMillis();
     setSortAcc(maxSlots);
     prepareForCollection();
+    log.info("====Log By Zhitao==== Time of setSortAcc&prepareForCollection " + (System.currentTimeMillis() - time1));
+    time1 = System.currentTimeMillis();
 
     collectDocs();
+    log.info("====Log By Zhitao==== Time of collectDocs " + (System.currentTimeMillis() - time1));
+    time1 = System.currentTimeMillis();
 
     return findTopSlots();
   }

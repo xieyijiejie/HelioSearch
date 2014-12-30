@@ -28,18 +28,9 @@
 
 <solr>
 
-  <solrcloud>
-    <str name="host">${host:}</str>
-    <int name="hostPort">${jetty.port:8983}</int>
-    <str name="hostContext">${hostContext:solr}</str>
-    <int name="zkClientTimeout">${zkClientTimeout:30000}</int>
-    <bool name="genericCoreNodeNames">${genericCoreNodeNames:true}</bool>
-  </solrcloud>
-
-  <shardHandlerFactory name="shardHandlerFactory"
-    class="HttpShardHandlerFactory">
-    <int name="socketTimeout">${socketTimeout:0}</int>
-    <int name="connTimeout">${connTimeout:0}</int>
-  </shardHandlerFactory>
+  <cores defaultCoreName="metrix_papers" adminPath="/admin/cores" hostPort="8983" hostContext="solr">
+    <!--core loadOnStartup="true" instanceDir="collection1/" transient="false" name="collection1"/-->
+    <core schema="schema.xml" loadOnStartup="true" instanceDir="metrix_papers/" transient="false" name="metrix_papers" config="solrconfig.xml" dataDir="data"/>
+  </cores>
 
 </solr>

@@ -24,6 +24,9 @@ import java.util.Iterator;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
 
 import org.apache.lucene.index.AtomicReaderContext;
 import org.apache.lucene.search.Query;
@@ -32,8 +35,8 @@ import org.apache.solr.common.params.FacetParams;
 import org.apache.solr.common.util.NamedList;
 import org.apache.solr.common.util.SimpleOrderedMap;
 import org.apache.solr.common.util.StrUtils;
-import org.apache.solr.handler.component.ResponseBuilder;
 import org.apache.solr.request.SolrQueryRequest;
+import org.apache.solr.request.SolrRequestInfo;
 import org.apache.solr.schema.IndexSchema;
 import org.apache.solr.search.DocIterator;
 import org.apache.solr.search.DocSet;
@@ -44,7 +47,6 @@ import org.apache.solr.search.QueryContext;
 import org.apache.solr.search.SolrIndexSearcher;
 import org.apache.solr.search.SyntaxError;
 import org.apache.solr.search.mutable.MutableValueInt;
-import org.noggit.ObjectBuilder;
 
 
 abstract class FacetRequest {
@@ -102,6 +104,35 @@ class FacetProcessor<FacetRequestT extends FacetRequest>  {
   protected SimpleOrderedMap<Object> response;
   protected FacetContext fcontext;
   protected FacetRequestT freq;
+  ExecutorService pool = Executors.newFixedThreadPool(10);
+  class FacetProcessorHandler implements Runnable {
+    Map.Entry<String,FacetRequest> sub;
+    NamedList<Object> response;
+    FacetContext subContext;
+    SolrRequestInfo info;
+    public FacetProcessorHandler(Map.Entry<String,FacetRequest> v1, NamedList<Object> v2, FacetContext v3){
+      this.sub = v1;
+      this.response = v2;
+      this.subContext = v3;
+    }
+    
+    public void setRequestInfo(SolrRequestInfo i){
+      this.info = i;
+    }
+    
+    @Override
+    public void run() {
+      try {
+        SolrRequestInfo.setRequestInfo(this.info);
+        FacetProcessor subProcessor = this.sub.getValue().createFacetProcessor(this.subContext);
+        subProcessor.process();
+        this.response.add( this.sub.getKey(), subProcessor.getResponse() );
+      } catch (IOException e) {
+        throw new RuntimeException();
+      }
+    }
+    
+  }
 
   LinkedHashMap<String,SlotAcc> accMap;
   protected SlotAcc[] accs;
@@ -166,10 +197,24 @@ class FacetProcessor<FacetRequestT extends FacetRequest>  {
 
 
   protected void fillBucketSubs(NamedList<Object> response, FacetContext subContext) throws IOException {
-    for (Map.Entry<String,FacetRequest> sub : freq.getSubFacets().entrySet()) {
-      FacetProcessor subProcessor = sub.getValue().createFacetProcessor(subContext);
-      subProcessor.process();
-      response.add( sub.getKey(), subProcessor.getResponse() );
+    if(freq.getSubFacets().entrySet().size() > 1){
+      for (Map.Entry<String,FacetRequest> sub : freq.getSubFacets().entrySet()) {
+        FacetProcessorHandler handler = new FacetProcessorHandler(sub, response, subContext);
+        handler.setRequestInfo(SolrRequestInfo.getRequestInfo());
+        pool.execute(handler);
+      }
+      try {
+        pool.shutdown();
+        pool.awaitTermination(20, TimeUnit.SECONDS);
+      } catch (InterruptedException e) {
+        throw new RuntimeException();
+      }
+    }else{
+      for (Map.Entry<String,FacetRequest> sub : freq.getSubFacets().entrySet()) {
+        FacetProcessor subProcessor = sub.getValue().createFacetProcessor(subContext);
+        subProcessor.process();
+        response.add( sub.getKey(), subProcessor.getResponse() );
+      }
     }
   }
 
