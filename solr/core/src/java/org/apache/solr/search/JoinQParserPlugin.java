@@ -34,13 +34,17 @@ import org.apache.solr.handler.component.ResponseBuilder;
 import org.apache.solr.request.LocalSolrQueryRequest;
 import org.apache.solr.request.SolrQueryRequest;
 import org.apache.solr.request.SolrRequestInfo;
+import org.apache.solr.schema.SchemaField;
 import org.apache.solr.schema.TrieField;
+import org.apache.solr.search.facet.UnInvertedField;
+import org.apache.solr.search.field.FieldUtil;
 import org.apache.solr.util.RefCounted;
 
 import java.io.Closeable;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.HashSet;
 import java.util.LinkedList;
 import java.util.List;
 import java.util.Set;
@@ -224,7 +228,7 @@ class JoinQuery extends Query {
       if (filter == null) {
         boolean debug = rb != null && rb.isDebug();
         long start = debug ? System.currentTimeMillis() : 0;
-        resultSet = getDocSet();
+        resultSet = getDocSetNew();
         long end = debug ? System.currentTimeMillis() : 0;
 
         if (debug) { // TODO: the debug process itself causes the query to be re-executed and this info is added multiple times!
@@ -269,8 +273,304 @@ class JoinQuery extends Query {
     int toTermDirectCount;    // number of toTerms that we set directly on a bitset rather than doing set intersections
     int smallSetsDeferred;    // number of small sets collected to be used later to intersect w/ bitset or create another small set
 
+    public DocSet getDocSetNew() throws IOException{
+      
+      
+      SchemaField sf = fromSearcher.getSchema().getField(fromField);
+      QueryContext qcontext = QueryContext.newContext(fromSearcher);
+      long time1 = System.currentTimeMillis();
+      SortedDocValues sortedDocValues = FieldUtil.getSortedDocValues(qcontext, sf, null);
+      long time2 = System.currentTimeMillis();
+      System.out.println("=======Zhitao Log======= FieldUtil.getSortedDocValues:" + (time2 - time1));
+      DocSet fromSet = fromSearcher.getDocSet(q);
+      fromSetSize = fromSet.size();
+      Fields fromFields = fromSearcher.getAtomicReader().fields();
+      Fields toFields = fromSearcher==toSearcher ? fromFields : toSearcher.getAtomicReader().fields();
+      Terms toTerms = toFields.terms(toField);
+      TermsEnum  toTermsEnum = toTerms.iterator(null);
+      DocIterator docIterator = fromSet.iterator();
+      Set<Integer> termSet = new HashSet<Integer>();
+      
+      
+      
+      long time3 = System.currentTimeMillis();
+      UnInvertedField uif = UnInvertedField.getUnInvertedField(fromField, fromSearcher);
+      SortedSetDocValues ssdv = uif.iterator(fromSearcher.getAtomicReader());
+      FixedBitSet termSetBit = new FixedBitSet(uif.numTerms());
+      while(docIterator.hasNext()){
+        ssdv.setDocument(docIterator.nextDoc());
+        for(long tempOrd = ssdv.nextOrd() ; tempOrd != SortedSetDocValues.NO_MORE_ORDS ; tempOrd = ssdv.nextOrd()){
+          termSet.add((int)tempOrd);
+          termSetBit.set((int)tempOrd);
+        }
+      }
 
-    public DocSet getDocSet() throws IOException {
+
+      long time4 = System.currentTimeMillis();
+      System.out.println("=======Zhitao Log======= DocIterator Loop:" + (time4 - time3));
+      FixedBitSet resultBits = null;
+      // minimum docFreq to use the cache
+      int minDocFreqFrom = Math.max(5, fromSearcher.maxDoc() >> 13);
+      int minDocFreqTo = Math.max(5, toSearcher.maxDoc() >> 13);
+      // use a smaller size than normal since we will need to sort and dedup the results
+      int maxSortedIntSize = Math.max(10, toSearcher.maxDoc() >> 10);
+      Bits fromLiveDocs = fromSearcher.getAtomicReader().getLiveDocs();
+      Bits toLiveDocs = fromSearcher == toSearcher ? fromLiveDocs : toSearcher.getAtomicReader().getLiveDocs();
+      SolrIndexSearcher.DocsEnumState toDeState = null;
+      toDeState = new SolrIndexSearcher.DocsEnumState();
+      toDeState.fieldName = toField;
+      toDeState.liveDocs = toLiveDocs;
+      toDeState.termsEnum = toTermsEnum;
+      toDeState.docsEnum = null;
+      toDeState.minSetSizeCached = minDocFreqTo;
+      LinkedList<DocSet> resultList = new LinkedList<DocSet>();
+      System.out.println("TermSetSize:" + termSet.size());
+      long time5 = System.currentTimeMillis();
+      
+      long timeFirstCondition = 0, timeSecondCondition = 0, timeSecondFirstCondition = 0, timeSecondSecondCondition = 0;
+      long seekPart = 0, dfPart = 0;
+      int first = 0, second = 0, firstsecond = 0, secondsecond = 0;
+      
+      DocIdSetIterator termIterator = termSetBit.iterator();
+      for(int termOrd = termIterator.nextDoc() ; termOrd != DocIdSetIterator.NO_MORE_DOCS ; termOrd = termIterator.nextDoc()){
+        long timeSeekStart = System.currentTimeMillis();
+        TermsEnum.SeekStatus status = toTermsEnum.seekCeil(sortedDocValues.lookupOrd(termOrd));
+        long timeSeekEnd = System.currentTimeMillis();
+        seekPart += timeSeekEnd - timeSeekStart;
+        if (status == TermsEnum.SeekStatus.END) break;
+        if (status == TermsEnum.SeekStatus.FOUND) {
+          
+          long getdfStart = System.currentTimeMillis();
+          toTermHits++;
+          int df = toTermsEnum.docFreq();
+          toTermHitsTotalDf += df;
+          if (resultBits==null && df + resultListDocs > maxSortedIntSize && resultList.size() > 0) {
+            resultBits = new FixedBitSet(toSearcher.maxDoc());
+          }
+          long getdfEnd = System.currentTimeMillis();
+          dfPart += getdfEnd - getdfStart;
+          // if we don't have a bitset yet, or if the resulting set will be too large
+          // use the filterCache to get a DocSet
+          long time11 = System.currentTimeMillis();
+          if (toTermsEnum.docFreq() >= minDocFreqTo || resultBits == null) {
+            first++;
+            // use filter cache
+            DocSet toTermSet = toSearcher.getDocSet(toDeState);
+            resultListDocs += toTermSet.size();
+            if (resultBits != null) {
+              toTermSet.setBitsOn(resultBits);
+              toTermSet.decref();
+            } else {
+              if (toTermSet instanceof BitDocSetNative) {
+                resultBits = ((BitDocSetNative)toTermSet).toFixedBitSet();
+                toTermSet.decref();
+              } else if (toTermSet instanceof BitDocSet) {
+                // shouldn't happen any more?
+                resultBits = (FixedBitSet)((BitDocSet)toTermSet).bits.clone();
+              } else {
+                // should be SortedIntDocSetNative
+                resultList.add(toTermSet);
+              }
+            }
+            long time22 = System.currentTimeMillis();
+            timeFirstCondition += time22 - time11;
+          } else {
+            toTermDirectCount++;
+            second++;
+            // need to use liveDocs here so we don't map to any deleted ones
+            toDeState.docsEnum = toDeState.termsEnum.docs(toDeState.liveDocs, toDeState.docsEnum, DocsEnum.FLAG_NONE);
+            DocsEnum docsEnum = toDeState.docsEnum;
+            long time111 = System.currentTimeMillis();
+            if (docsEnum instanceof MultiDocsEnum) {
+              firstsecond++;
+              MultiDocsEnum.EnumWithSlice[] subs = ((MultiDocsEnum)docsEnum).getSubs();
+              int numSubs = ((MultiDocsEnum)docsEnum).getNumSubs();
+              for (int subindex = 0; subindex<numSubs; subindex++) {
+                MultiDocsEnum.EnumWithSlice sub = subs[subindex];
+                if (sub.docsEnum == null) continue;
+                int base = sub.slice.start;
+                int docid;
+                while ((docid = sub.docsEnum.nextDoc()) != DocIdSetIterator.NO_MORE_DOCS) {
+                  resultListDocs++;
+                  resultBits.set(docid + base);
+                }
+              }
+              long time222 = System.currentTimeMillis();
+              timeSecondFirstCondition += time222 - time111;
+            } else {
+              secondsecond++;
+              int docid;
+              while ((docid = docsEnum.nextDoc()) != DocIdSetIterator.NO_MORE_DOCS) {
+                resultListDocs++;
+                resultBits.set(docid);
+              }
+              long time222 = System.currentTimeMillis();
+              timeSecondSecondCondition += time222 - time111;
+            }
+            long time22 = System.currentTimeMillis();
+            timeSecondCondition += time22 - time11;
+          }
+          
+        }
+      }
+      
+//      for(int termOrd : termSet){
+//        long timeSeekStart = System.currentTimeMillis();
+//        TermsEnum.SeekStatus status = toTermsEnum.seekCeil(sortedDocValues.lookupOrd(termOrd));
+//        long timeSeekEnd = System.currentTimeMillis();
+//        seekPart += timeSeekEnd - timeSeekStart;
+//        if (status == TermsEnum.SeekStatus.END) break;
+//        if (status == TermsEnum.SeekStatus.FOUND) {
+//          
+//          long getdfStart = System.currentTimeMillis();
+//          toTermHits++;
+//          int df = toTermsEnum.docFreq();
+//          toTermHitsTotalDf += df;
+//          if (resultBits==null && df + resultListDocs > maxSortedIntSize && resultList.size() > 0) {
+//            resultBits = new FixedBitSet(toSearcher.maxDoc());
+//          }
+//          long getdfEnd = System.currentTimeMillis();
+//          dfPart += getdfEnd - getdfStart;
+//          // if we don't have a bitset yet, or if the resulting set will be too large
+//          // use the filterCache to get a DocSet
+//          long time11 = System.currentTimeMillis();
+//          if (toTermsEnum.docFreq() >= minDocFreqTo || resultBits == null) {
+//            first++;
+//            // use filter cache
+//            DocSet toTermSet = toSearcher.getDocSet(toDeState);
+//            resultListDocs += toTermSet.size();
+//            if (resultBits != null) {
+//              toTermSet.setBitsOn(resultBits);
+//              toTermSet.decref();
+//            } else {
+//              if (toTermSet instanceof BitDocSetNative) {
+//                resultBits = ((BitDocSetNative)toTermSet).toFixedBitSet();
+//                toTermSet.decref();
+//              } else if (toTermSet instanceof BitDocSet) {
+//                // shouldn't happen any more?
+//                resultBits = (FixedBitSet)((BitDocSet)toTermSet).bits.clone();
+//              } else {
+//                // should be SortedIntDocSetNative
+//                resultList.add(toTermSet);
+//              }
+//            }
+//            long time22 = System.currentTimeMillis();
+//            timeFirstCondition += time22 - time11;
+//          } else {
+//            toTermDirectCount++;
+//            second++;
+//            // need to use liveDocs here so we don't map to any deleted ones
+//            toDeState.docsEnum = toDeState.termsEnum.docs(toDeState.liveDocs, toDeState.docsEnum, DocsEnum.FLAG_NONE);
+//            DocsEnum docsEnum = toDeState.docsEnum;
+//            long time111 = System.currentTimeMillis();
+//            if (docsEnum instanceof MultiDocsEnum) {
+//              firstsecond++;
+//              MultiDocsEnum.EnumWithSlice[] subs = ((MultiDocsEnum)docsEnum).getSubs();
+//              int numSubs = ((MultiDocsEnum)docsEnum).getNumSubs();
+//              for (int subindex = 0; subindex<numSubs; subindex++) {
+//                MultiDocsEnum.EnumWithSlice sub = subs[subindex];
+//                if (sub.docsEnum == null) continue;
+//                int base = sub.slice.start;
+//                int docid;
+//                while ((docid = sub.docsEnum.nextDoc()) != DocIdSetIterator.NO_MORE_DOCS) {
+//                  resultListDocs++;
+//                  resultBits.set(docid + base);
+//                }
+//              }
+//              long time222 = System.currentTimeMillis();
+//              timeSecondFirstCondition += time222 - time111;
+//            } else {
+//              secondsecond++;
+//              int docid;
+//              while ((docid = docsEnum.nextDoc()) != DocIdSetIterator.NO_MORE_DOCS) {
+//                resultListDocs++;
+//                resultBits.set(docid);
+//              }
+//              long time222 = System.currentTimeMillis();
+//              timeSecondSecondCondition += time222 - time111;
+//            }
+//            long time22 = System.currentTimeMillis();
+//            timeSecondCondition += time22 - time11;
+//          }
+//          
+//        }
+//      }
+      long time6 = System.currentTimeMillis();
+      System.out.println("=======Zhitao Log======= TermSet Loop:" + (time6 - time5));
+      System.out.println("=======Zhitao Log======= SeekPart:" + seekPart);
+      System.out.println("=======Zhitao Log======= dfPart:" + dfPart);
+      System.out.println("=======Zhitao Log======= timeFirstCondition:" + timeFirstCondition);
+      System.out.println("=======Zhitao Log======= timeSecondCondition:" + timeSecondCondition);
+      System.out.println("=======Zhitao Log======= timeSecondFirstCondition:" + timeSecondFirstCondition);
+      System.out.println("=======Zhitao Log======= timeSecondSecondCondition:" + timeSecondSecondCondition);
+      System.out.println("=======Zhitao Log======= first:" + first);
+      System.out.println("=======Zhitao Log======= second:" + second);
+      System.out.println("=======Zhitao Log======= firstsecond:" + firstsecond);
+      System.out.println("=======Zhitao Log======= secondsecond:" + secondsecond);
+
+      smallSetsDeferred = resultList.size();
+
+      if (resultBits != null) {
+
+        for(;;) {
+          DocSet set = resultList.pollFirst();
+          if (set == null) break;
+          set.setBitsOn(resultBits);
+          set.decref();
+        }
+        return new BitDocSet(resultBits);
+      }
+
+      if (resultList.size()==0) {
+        return DocSet.EMPTY;
+      }
+
+      /** This could be off-heap, and we don't want to have to try and free it later
+       if (resultList.size() == 1) {
+       return resultList.get(0);
+       }
+       **/
+
+      int sz = 0;
+
+      for (DocSet set : resultList)
+        sz += set.size();
+
+      int[] docs = new int[sz];
+      int pos = 0;
+
+      for(;;) {
+        DocSet set = resultList.pollFirst();
+        if (set == null) break;
+        if (set instanceof SortedIntDocSet) {
+          System.arraycopy(((SortedIntDocSet)set).getDocs(), 0, docs, pos, set.size());
+        } else {
+          HS.copyInts(((SortedIntDocSetNative)set).getIntArrayPointer(), 0, docs, pos, set.size());
+        }
+        pos += set.size();
+        set.decref();
+      }
+
+      Arrays.sort(docs);  // TODO: try switching to timsort or something like a bucket sort for numbers...
+      int[] dedup = new int[sz];
+      pos = 0;
+      int last = -1;
+      for (int doc : docs) {
+        if (doc != last)
+          dedup[pos++] = doc;
+        last = doc;
+      }
+
+      if (pos != dedup.length) {
+        dedup = Arrays.copyOf(dedup, pos);
+      }
+      long time7 = System.currentTimeMillis();
+      System.out.println("=======Zhitao Log======= Other After TermSet Loop:" + (time7 - time6));
+      System.out.println("=======Zhitao Log======= GetDocSetNew Total:" + (time7 - time1));
+      return new SortedIntDocSet(dedup, dedup.length);
+    }
+
+    public DocSet getDocSetOld() throws IOException {
       FixedBitSet resultBits = null;
 
       // minimum docFreq to use the cache
@@ -380,7 +680,7 @@ class JoinQuery extends Query {
             intersects = fromSet.intersects(fromTermSet);
             fromTermSet.decref();
           }
-
+          
           if (intersects) {
             fromTermHits++;
             fromTermHitsTotalDf++;

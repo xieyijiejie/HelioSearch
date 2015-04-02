@@ -30,10 +30,10 @@
 
   <cores defaultCoreName="metrix_papers" adminPath="/admin/cores" hostPort="8983" hostContext="solr">
     <!--core loadOnStartup="true" instanceDir="collection1/" transient="false" name="collection1"/-->
-    <core schema="schema.xml" loadOnStartup="true" instanceDir="metrix_papers/" transient="false" name="metrix_papers" config="solrconfig.xml" dataDir="data"/>
+    <!--core schema="schema.xml" loadOnStartup="true" instanceDir="metrix_papers/" transient="false" name="metrix_papers" config="solrconfig.xml" dataDir="data"/-->
     <core schema="schema.xml" loadOnStartup="true" instanceDir="metrix_organization/" transient="false" name="metrix_organization" config="solrconfig.xml" dataDir="data"/>
     <core schema="schema.xml" loadOnStartup="true" instanceDir="metrix_hcp/" transient="false" name="metrix_hcp" config="solrconfig.xml" dataDir="data"/>
-    <core schema="schema.xml" loadOnStartup="true" instanceDir="navisus_payment/" transient="false" name="navisus_payment" config="solrconfig.xml" dataDir="data"/>
+    <!--core schema="schema.xml" loadOnStartup="true" instanceDir="navisus_payment/" transient="false" name="navisus_payment" config="solrconfig.xml" dataDir="data"/-->
   </cores>
 
 </solr>
