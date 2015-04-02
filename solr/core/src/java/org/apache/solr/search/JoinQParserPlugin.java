@@ -228,7 +228,7 @@ class JoinQuery extends Query {
       if (filter == null) {
         boolean debug = rb != null && rb.isDebug();
         long start = debug ? System.currentTimeMillis() : 0;
-        resultSet = getDocSetNew();
+        resultSet = getDocSetOld();
         long end = debug ? System.currentTimeMillis() : 0;
 
         if (debug) { // TODO: the debug process itself causes the query to be re-executed and this info is added multiple times!
