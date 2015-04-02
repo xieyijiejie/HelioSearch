@@ -272,7 +272,7 @@ class JoinQuery extends Query {
 
     public DocSet getDocSet() throws IOException {
 //      log.info("====Log By Zhitao==== Time of Total getFieldCacheCounts " + (System.currentTimeMillis() - time1));
-      long intersectTime = 0L, findDocTime = 0L, findDocCond1Time = 0L, findDocCond2Time = 0L;
+      long intersectTime = 0L, findDocTime = 0L, findDocCond1Time = 0L, findDocCond2Time = 0L, seekTermTime = 0;
       
       long time1 = System.currentTimeMillis();
       FixedBitSet resultBits = null;
@@ -392,6 +392,7 @@ class JoinQuery extends Query {
             fromTermHitsTotalDf++;
             long findDocStartTime = System.currentTimeMillis();
             TermsEnum.SeekStatus status = toTermsEnum.seekCeil(term);
+            seekTermTime += System.currentTimeMillis() - findDocStartTime;
             if (status == TermsEnum.SeekStatus.END) break;
             if (status == TermsEnum.SeekStatus.FOUND) {
               toTermHits++;
@@ -451,7 +452,7 @@ class JoinQuery extends Query {
                     resultBits.set(docid);
                   }
                 }
-                findDocCond1Time += System.currentTimeMillis() - findDocCond2StartTime;
+                findDocCond2Time += System.currentTimeMillis() - findDocCond2StartTime;
               }
 
             }
@@ -464,10 +465,11 @@ class JoinQuery extends Query {
 
         System.out.println("====Log By Zhitao==== intersectTime " + intersectTime);
         System.out.println("====Log By Zhitao==== findDocTime " + findDocTime);
+        System.out.println("====Log By Zhitao==== seekTermTime " + seekTermTime);
         System.out.println("====Log By Zhitao==== findDocCond1Time " + findDocCond1Time);
         System.out.println("====Log By Zhitao==== findDocCond2Time " + findDocCond2Time);
 
-        long createResultStartTime = 0L;
+        long createResultStartTime = System.currentTimeMillis();
         if (resultBits != null) {
 
           for(;;) {
