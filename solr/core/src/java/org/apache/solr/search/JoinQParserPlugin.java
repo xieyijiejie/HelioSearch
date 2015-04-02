@@ -271,6 +271,10 @@ class JoinQuery extends Query {
 
 
     public DocSet getDocSet() throws IOException {
+//      log.info("====Log By Zhitao==== Time of Total getFieldCacheCounts " + (System.currentTimeMillis() - time1));
+      long intersectTime = 0L, findDocTime = 0L, findDocCond1Time = 0L, findDocCond2Time = 0L;
+      
+      long time1 = System.currentTimeMillis();
       FixedBitSet resultBits = null;
 
       // minimum docFreq to use the cache
@@ -283,7 +287,7 @@ class JoinQuery extends Query {
       // TODO: set new SolrRequestInfo???
       DocSet fromSet = fromSearcher.getDocSet(q);
       fromSetSize = fromSet.size();
-
+      long time2 = System.currentTimeMillis();
       LinkedList<DocSet> resultList = new LinkedList<DocSet>();
       try {
 
@@ -333,13 +337,14 @@ class JoinQuery extends Query {
         toDeState.termsEnum = toTermsEnum;
         toDeState.docsEnum = null;
         toDeState.minSetSizeCached = minDocFreqTo;
-
+        long time3 = System.currentTimeMillis();
         while (term != null) {
           if (prefix != null && !StringHelper.startsWith(term, prefix))
             break;
 
           fromTermCount++;
 
+          long timeBeforeIntersect = System.currentTimeMillis();
           boolean intersects = false;
           int freq = termsEnum.docFreq();
           fromTermTotalDf++;
@@ -380,10 +385,12 @@ class JoinQuery extends Query {
             intersects = fromSet.intersects(fromTermSet);
             fromTermSet.decref();
           }
+          intersectTime += System.currentTimeMillis() - timeBeforeIntersect;
 
           if (intersects) {
             fromTermHits++;
             fromTermHitsTotalDf++;
+            long findDocStartTime = System.currentTimeMillis();
             TermsEnum.SeekStatus status = toTermsEnum.seekCeil(term);
             if (status == TermsEnum.SeekStatus.END) break;
             if (status == TermsEnum.SeekStatus.FOUND) {
@@ -397,6 +404,7 @@ class JoinQuery extends Query {
               // if we don't have a bitset yet, or if the resulting set will be too large
               // use the filterCache to get a DocSet
               if (toTermsEnum.docFreq() >= minDocFreqTo || resultBits == null) {
+                long findDocCond1StartTime = System.currentTimeMillis();
                 // use filter cache
                 DocSet toTermSet = toSearcher.getDocSet(toDeState);
                 resultListDocs += toTermSet.size();
@@ -415,9 +423,10 @@ class JoinQuery extends Query {
                     resultList.add(toTermSet);
                   }
                 }
+                findDocCond1Time += System.currentTimeMillis() - findDocCond1StartTime;
               } else {
                 toTermDirectCount++;
-
+                long findDocCond2StartTime = System.currentTimeMillis();
                 // need to use liveDocs here so we don't map to any deleted ones
                 toDeState.docsEnum = toDeState.termsEnum.docs(toDeState.liveDocs, toDeState.docsEnum, DocsEnum.FLAG_NONE);
                 DocsEnum docsEnum = toDeState.docsEnum;
@@ -442,16 +451,23 @@ class JoinQuery extends Query {
                     resultBits.set(docid);
                   }
                 }
+                findDocCond1Time += System.currentTimeMillis() - findDocCond2StartTime;
               }
 
             }
+            findDocTime += System.currentTimeMillis() - findDocStartTime;
           }
 
           term = termsEnum.next();
         }
-
         smallSetsDeferred = resultList.size();
 
+        System.out.println("====Log By Zhitao==== intersectTime " + intersectTime);
+        System.out.println("====Log By Zhitao==== findDocTime " + findDocTime);
+        System.out.println("====Log By Zhitao==== findDocCond1Time " + findDocCond1Time);
+        System.out.println("====Log By Zhitao==== findDocCond2Time " + findDocCond2Time);
+
+        long createResultStartTime = 0L;
         if (resultBits != null) {
 
           for(;;) {
@@ -460,6 +476,7 @@ class JoinQuery extends Query {
             set.setBitsOn(resultBits);
             set.decref();
           }
+          System.out.println("====Log By Zhitao==== createResultTime resultBits!=null " + (System.currentTimeMillis() - createResultStartTime));
           return new BitDocSet(resultBits);
         }
 
@@ -506,7 +523,7 @@ class JoinQuery extends Query {
         if (pos != dedup.length) {
           dedup = Arrays.copyOf(dedup, pos);
         }
-
+        System.out.println("====Log By Zhitao==== createResultTime " + (System.currentTimeMillis() - createResultStartTime));
         return new SortedIntDocSet(dedup, dedup.length);
 
       } finally {
