@@ -239,6 +239,7 @@ public class SolrConfig extends Config {
 
 
     queryResultCacheConfig = CacheConfig.getConfig(this, "query/queryResultCache");
+    joinQueryResultCacheConfig = CacheConfig.getConfig(this, "query/queryResultCache");//CacheConfig.getConfig(this, "query/joinQueryResultCacheConfig");
     documentCacheConfig = CacheConfig.getConfig(this, "query/documentCache");
     conf = CacheConfig.getConfig(this, "query/fieldValueCache");
     if (conf == null) {
@@ -389,6 +390,7 @@ public class SolrConfig extends Config {
   // SolrIndexSearcher - caches configurations
   public final CacheConfig filterCacheConfig ;
   public final CacheConfig queryResultCacheConfig;
+  public final CacheConfig joinQueryResultCacheConfig;
   public final CacheConfig documentCacheConfig;
   public final CacheConfig fieldValueCacheConfig;
   public final CacheConfig nCacheConfig;

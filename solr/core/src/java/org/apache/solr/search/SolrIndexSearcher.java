@@ -95,6 +95,7 @@ import org.apache.solr.common.util.NamedList;
 import org.apache.solr.common.util.SimpleOrderedMap;
 import org.apache.solr.core.DirectoryFactory;
 import org.apache.solr.core.DirectoryFactory.DirContext;
+import org.apache.solr.core.CoreContainer;
 import org.apache.solr.core.SolrConfig;
 import org.apache.solr.core.SolrCore;
 import org.apache.solr.core.SolrInfoMBean;
@@ -107,6 +108,7 @@ import org.apache.solr.schema.IndexSchema;
 import org.apache.solr.schema.SchemaField;
 import org.apache.solr.search.field.TopValues;
 import org.apache.solr.update.SolrIndexConfig;
+import org.apache.solr.util.RefCounted;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -148,6 +150,7 @@ public class SolrIndexSearcher extends IndexSearcher implements Closeable,SolrIn
   private final SolrCache<QueryResultKey,DocList> queryResultCache;
   private final SolrCache<Integer,Document> documentCache;
   private final SolrCache<String,UnInvertedField> fieldValueCache;
+  public final SolrCache<JoinQueryResultKey, int[][]> joinQueryResultCache;
 
   private final SolrCache<String,TopValues> nCache;
 
@@ -273,6 +276,8 @@ public class SolrIndexSearcher extends IndexSearcher implements Closeable,SolrIn
       if (filterCache!=null) clist.add(filterCache);
       queryResultCache = solrConfig.queryResultCacheConfig==null ? null : solrConfig.queryResultCacheConfig.newInstance();
       if (queryResultCache!=null) clist.add(queryResultCache);
+      joinQueryResultCache = solrConfig.joinQueryResultCacheConfig==null ? null : solrConfig.joinQueryResultCacheConfig.newInstance();
+      if (joinQueryResultCache!=null) clist.add(joinQueryResultCache);
       documentCache = solrConfig.documentCacheConfig==null ? null : solrConfig.documentCacheConfig.newInstance();
       if (documentCache!=null) clist.add(documentCache);
 
@@ -295,6 +300,7 @@ public class SolrIndexSearcher extends IndexSearcher implements Closeable,SolrIn
       nCache = null;
       filterCache=null;
       queryResultCache=null;
+      joinQueryResultCache=null;
       documentCache=null;
       fieldValueCache=null;
       cacheMap = noGenericCaches;
