@@ -55,6 +55,7 @@ public abstract class QParserPlugin implements NamedListInitializedPlugin, SolrI
     SpatialFilterQParserPlugin.NAME, SpatialFilterQParserPlugin.class,
     SpatialBoxQParserPlugin.NAME, SpatialBoxQParserPlugin.class,
     JoinQParserPlugin.NAME, JoinQParserPlugin.class,
+    JoinJsonQParserPlugin.NAME, JoinJsonQParserPlugin.class,
     SurroundQParserPlugin.NAME, SurroundQParserPlugin.class,
     SwitchQParserPlugin.NAME, SwitchQParserPlugin.class,
     MaxScoreQParserPlugin.NAME, MaxScoreQParserPlugin.class,
