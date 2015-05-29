@@ -170,8 +170,10 @@ public class NamedList<T> implements Cloneable, Serializable, Iterable<Map.Entry
    * Adds a name/value pair to the end of the list.
    */
   public void add(String name, T val) {
-    nvPairs.add(name);
-    nvPairs.add(val);
+    synchronized(nvPairs){
+      nvPairs.add(name);
+      nvPairs.add(val);
+    }
   }
 
   /**
