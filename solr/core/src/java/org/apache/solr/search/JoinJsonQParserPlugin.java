@@ -54,6 +54,11 @@ import org.noggit.ObjectBuilder;
  * limitations under the License.
  */
 
+
+/* Query Example
+{!jsonjoin cache=false}{"$not": {"$or":[{"index":"metrix_clinicaltrials", "q":"study_type_id:8"}, {"$join":{"from":{"$join":{"from":{"index":"metrix_organization", "q":"province:11"}, "to":{"index":"metrix_hcp"}, "on":"id->institution_list"}}, "to":{"index":"metrix_clinicaltrials", "q":"study_type_id:9"}, "on":"id->link_hcp"}}]}}
+ */
+
 public class JoinJsonQParserPlugin extends QParserPlugin{
   public static final String NAME = "jsonjoin";
   
@@ -63,61 +68,50 @@ public class JoinJsonQParserPlugin extends QParserPlugin{
   @Override
   public QParser createParser(String qstr, SolrParams localParams, SolrParams params, SolrQueryRequest req) {
     return new QParser(qstr, localParams, params, req) {
-      private void parseJoinQueryObject(Map<String, Object> joinQueryObject) throws SyntaxError{
+      private void parseJoinQueryObject(Map<String, Object> queryObject) throws SyntaxError{
         
-        String op = "";
-        if(joinQueryObject.containsKey("$and")){
-          op = "$and";
-          
-        }else if(joinQueryObject.containsKey("$or")){
-          op = "$or";
-        }else if(joinQueryObject.containsKey("$chain")){
-          op = "$chain";
-        }
-        if(op.isEmpty()){
-          String fromIndexName = (String)joinQueryObject.get("fromIndex");
-          String toIndexName = (String)joinQueryObject.get("toIndex");
-          
-          CoreContainer container = req.getCore().getCoreDescriptor().getCoreContainer();
-          final SolrCore fromCore = container.getCore(fromIndexName);
-          RefCounted<SolrIndexSearcher> fromHolder = null;
-
-          if (fromCore == null) {
-            throw new SolrException(SolrException.ErrorCode.BAD_REQUEST, "Cross-core join: no such core " + fromIndexName);
-          }
-          LocalSolrQueryRequest otherReq = new LocalSolrQueryRequest(fromCore, params);
-          try {
-            QParser parser = QParser.getParser(joinQueryObject.containsKey("fromQuery")?(String)joinQueryObject.get("fromQuery"):"*:*", "lucene", otherReq);
-            Query q = parser.getQuery();
-            joinQueryObject.put("fromq", q);
-          } finally {
-            otherReq.close();
-            fromCore.close();
-            if (fromHolder != null) fromHolder.decref();
-          }
-          
-          if(joinQueryObject.containsKey("toQuery")){
-            final SolrCore toCore = container.getCore(toIndexName);
-            RefCounted<SolrIndexSearcher> toHolder = null;
-
-            if (toCore == null) {
-              throw new SolrException(SolrException.ErrorCode.BAD_REQUEST, "Cross-core join: no such core " + toIndexName);
-            }
-            LocalSolrQueryRequest otherReqTo = new LocalSolrQueryRequest(toCore, params);
-            try {
-              QParser parser = QParser.getParser((String)joinQueryObject.get("toQuery"), "lucene", otherReqTo);
-              Query q = parser.getQuery();
-              joinQueryObject.put("toq", q);
-            } finally {
-              otherReqTo.close();
-              toCore.close();
-              if (toHolder != null) toHolder.decref();
-            }
-          }
+        if(queryObject.containsKey("$join")){
+          Map<String, Object> joinQueryObject = (Map<String, Object>)queryObject.get("$join");
+          parseJoinQueryObject((Map<String, Object>)joinQueryObject.get("from"));
+          parseJoinQueryObject((Map<String, Object>)joinQueryObject.get("to"));
+        }else if(queryObject.containsKey("$not")){
+          parseJoinQueryObject((Map<String, Object>)queryObject.get("$not"));
         }else{
-          List<Map<String, Object>> joinQueryList = (List<Map<String, Object>>)joinQueryObject.get(op);
-          for(Map<String, Object> joinQuerySubObject : joinQueryList){
-            parseJoinQueryObject(joinQuerySubObject);
+          String op = "";
+          if(queryObject.containsKey("$and")){
+            op = "$and";
+          }else if(queryObject.containsKey("$or")){
+            op = "$or";
+          }
+          if(op.isEmpty()){
+            String indexName = (String)queryObject.get("index");
+            CoreContainer container = req.getCore().getCoreDescriptor().getCoreContainer();
+            final SolrCore core = container.getCore(indexName);
+            RefCounted<SolrIndexSearcher> holder = null;
+
+            if (core == null) {
+              throw new SolrException(SolrException.ErrorCode.BAD_REQUEST, "Cross-core join: no such core " + indexName);
+            }
+            LocalSolrQueryRequest otherReq = new LocalSolrQueryRequest(core, params);
+            try {
+              if(queryObject.get("q") == null || ((String)queryObject.get("q")).isEmpty()){
+                
+              }else{
+                QParser parser = QParser.getParser((String)queryObject.get("q"), "lucene", otherReq);
+                Query q = parser.getQuery();
+                queryObject.put("parsedq", q);
+              }
+
+            } finally {
+              otherReq.close();
+              core.close();
+              if (holder != null) holder.decref();
+            }
+          }else{
+            List<Map<String, Object>> joinQueryList = (List<Map<String, Object>>)queryObject.get(op);
+            for(Map<String, Object> joinQuerySubObject : joinQueryList){
+              parseJoinQueryObject(joinQuerySubObject);
+            }
           }
         }
       }
@@ -133,31 +127,7 @@ public class JoinJsonQParserPlugin extends QParserPlugin{
         } catch (IOException e) {
           // impossible
         }
-        parseJoinQueryObject(joinQueryObject);
 
-//        for(Map<String, Object> joinInfo : joinList){
-//
-//          String fromIndexName = (String)joinInfo.get("fromIndex");
-//          String toIndexName = (String)joinInfo.get("toIndex");
-//          
-//          CoreContainer container = req.getCore().getCoreDescriptor().getCoreContainer();
-//          final SolrCore fromCore = container.getCore(fromIndexName);
-//          RefCounted<SolrIndexSearcher> fromHolder = null;
-//
-//          if (fromCore == null) {
-//            throw new SolrException(SolrException.ErrorCode.BAD_REQUEST, "Cross-core join: no such core " + fromIndexName);
-//          }
-//          LocalSolrQueryRequest otherReq = new LocalSolrQueryRequest(fromCore, params);
-//          try {
-//            QParser parser = QParser.getParser((String)joinInfo.get("q"), "lucene", otherReq);
-//            Query q = parser.getQuery();
-//            joinInfo.put("q", q);
-//          } finally {
-//            otherReq.close();
-//            fromCore.close();
-//            if (fromHolder != null) fromHolder.decref();
-//          }
-//        }
         return new JoinJsonQuery(joinQueryObject);
       }
     };
@@ -193,71 +163,53 @@ class JoinJsonQuery extends Query {
       buildSearcherMap(joinQueryObject);
     }
     
-    private void buildSearcherMap(Map<String, Object> _joinQueryObject){
-      String op = "";
-      if(_joinQueryObject.containsKey("$and")){
-        op = "$and";
-        
-      }else if(_joinQueryObject.containsKey("$or")){
-        op = "$or";
-      }else if(_joinQueryObject.containsKey("$chain")){
-        op = "$chain";
-      }
-      if(op.isEmpty()){
-        String fromIndexName = (String)_joinQueryObject.get("fromIndex");
-        String toIndexName = (String)_joinQueryObject.get("toIndex");
-        SolrRequestInfo info = SolrRequestInfo.getRequestInfo();
-        if (info != null) {
-          rb = info.getResponseBuilder();
-        }
-        if(!searcherMap.containsKey(fromIndexName)){
-          CoreContainer container = rb.req.getCore().getCoreDescriptor().getCoreContainer();
-          final SolrCore core = container.getCore(fromIndexName);
-          if (core == null) {
-            throw new SolrException(SolrException.ErrorCode.BAD_REQUEST, "Cross-core join: no such core " + fromIndexName);
-          }
-          RefCounted<SolrIndexSearcher> coreRef = core.getSearcher(false, true, null);
-          searcherMap.put(fromIndexName, coreRef.get());
-          final RefCounted<SolrIndexSearcher> ref = coreRef;
-          info.addCloseHook(new Closeable() {
-            @Override
-            public void close() {
-              ref.decref();
-            }
-          });
-          info.addCloseHook(new Closeable() {
-            @Override
-            public void close() {
-              core.close();
-            }
-          });
-        }
-        if(!searcherMap.containsKey(toIndexName)){
-          CoreContainer container = rb.req.getCore().getCoreDescriptor().getCoreContainer();
-          final SolrCore core = container.getCore(toIndexName);
-          if (core == null) {
-            throw new SolrException(SolrException.ErrorCode.BAD_REQUEST, "Cross-core join: no such core " + toIndexName);
-          }
-          RefCounted<SolrIndexSearcher> coreRef = core.getSearcher(false, true, null);
-          searcherMap.put(toIndexName, coreRef.get());
-          final RefCounted<SolrIndexSearcher> ref = coreRef;
-          info.addCloseHook(new Closeable() {
-            @Override
-            public void close() {
-              ref.decref();
-            }
-          });
-          info.addCloseHook(new Closeable() {
-            @Override
-            public void close() {
-              core.close();
-            }
-          });
-        }
+    private void buildSearcherMap(Map<String, Object> _queryObject){
+      if(_queryObject.containsKey("$join")){
+        Map<String, Object> _joinQueryObject = (Map<String, Object>)_queryObject.get("$join");
+        buildSearcherMap((Map<String, Object>)_joinQueryObject.get("from"));
+        buildSearcherMap((Map<String, Object>)_joinQueryObject.get("to"));
+      }else if(_queryObject.containsKey("$not")){
+        buildSearcherMap((Map<String, Object>)_queryObject.get("$not"));
       }else{
-        List<Map<String, Object>> joinQueryList = (List<Map<String, Object>>)_joinQueryObject.get(op);
-        for(Map<String, Object> joinQuerySubObject : joinQueryList){
-          buildSearcherMap(joinQuerySubObject);
+        String op = "";
+        if(_queryObject.containsKey("$and")){
+          op = "$and";
+        }else if(_queryObject.containsKey("$or")){
+          op = "$or";
+        }
+        if(op.isEmpty()){
+          String indexName = (String)_queryObject.get("index");
+          SolrRequestInfo info = SolrRequestInfo.getRequestInfo();
+          if (info != null) {
+            rb = info.getResponseBuilder();
+          }
+          if(!searcherMap.containsKey(indexName)){
+            CoreContainer container = rb.req.getCore().getCoreDescriptor().getCoreContainer();
+            final SolrCore core = container.getCore(indexName);
+            if (core == null) {
+              throw new SolrException(SolrException.ErrorCode.BAD_REQUEST, "Cross-core join: no such core " + indexName);
+            }
+            RefCounted<SolrIndexSearcher> coreRef = core.getSearcher(false, true, null);
+            searcherMap.put(indexName, coreRef.get());
+            final RefCounted<SolrIndexSearcher> ref = coreRef;
+            info.addCloseHook(new Closeable() {
+              @Override
+              public void close() {
+                ref.decref();
+              }
+            });
+            info.addCloseHook(new Closeable() {
+              @Override
+              public void close() {
+                core.close();
+              }
+            });
+          }
+        }else{
+          List<Map<String, Object>> joinQueryList = (List<Map<String, Object>>)_queryObject.get(op);
+          for(Map<String, Object> joinQuerySubObject : joinQueryList){
+            buildSearcherMap(joinQuerySubObject);
+          }
         }
       }
     }
@@ -289,7 +241,7 @@ class JoinJsonQuery extends Query {
     public Scorer scorer(AtomicReaderContext context, Bits acceptDocs)
         throws IOException {
       if (filter == null) {
-        resultSet = getDocSet(joinQueryObject, null);
+        resultSet = getDocSet(joinQueryObject);
         filter = resultSet.getTopFilter();
       }
 
@@ -300,7 +252,7 @@ class JoinJsonQuery extends Query {
     }
     
     private int[][] buildJoinResultCache(SolrIndexSearcher fromSearcher, SolrIndexSearcher toSearcher, String fromField, String toField){
-      JoinQueryResultKey jqrk = new JoinQueryResultKey(toSearcher.getName(), fromField, toField);
+      JoinQueryResultKey jqrk = new JoinQueryResultKey(fromSearcher.getName(), fromField, toField);
       if(!rb.req.getParams().getBool("refreshCache", false) && toSearcher.joinQueryResultCache.get(jqrk) != null){
         System.out.println("Cache Hit");
         return toSearcher.joinQueryResultCache.get(jqrk);
@@ -394,72 +346,101 @@ class JoinJsonQuery extends Query {
       return new BitDocSetNative(joinResultBitSet);
     }
     
-    public DocSet getDocSet(Map<String, Object> _joinQueryObject, DocSet filterDocSet) throws IOException{
-      String op = "";
-      if(_joinQueryObject.containsKey("$and")){
-        op = "$and";
-        
-      }else if(_joinQueryObject.containsKey("$or")){
-        op = "$or";
-      }else if(_joinQueryObject.containsKey("$chain")){
-        op = "$chain";
-      }
+    public DocSet getDocSet(Map<String, Object> _queryObject) throws IOException{
       DocSet resultDocSet = null;
-      if(op.isEmpty()){
-        SolrIndexSearcher fromSearcher = searcherMap.get((String)_joinQueryObject.get("fromIndex"));
-        SolrIndexSearcher toSearcher = searcherMap.get((String)_joinQueryObject.get("toIndex"));
-        String fromField = (String)_joinQueryObject.get("fromField");
-        String toField = (String)_joinQueryObject.get("toField");
-        Query fromq = (Query)_joinQueryObject.get("fromq");
-        DocSet toSet = null;
-        if(_joinQueryObject.containsKey("toq")){
-          Query toq = (Query)_joinQueryObject.get("toq");
-          toSet = toSearcher.getDocSet(toq);
-        }
-        DocSet fromSet = (filterDocSet==null?fromSearcher.getDocSet(fromq):fromSearcher.getDocSet(fromq, filterDocSet));
-        resultDocSet = getDocSetNewWithCache(fromSearcher, toSearcher, fromField, toField, fromSet);
-        fromSet.decref();
-        if(toSet != null){
-          DocSet newResultDocSet = resultDocSet.intersection(toSet);
+      if(_queryObject.containsKey("$join")){
+        Map<String, Object> _joinQueryObject = (Map<String, Object>)_queryObject.get("$join");
+        DocSet fromDocSet = getDocSet((Map<String, Object>)_joinQueryObject.get("from"));
+        String fromIndex = getLastIndexName((Map<String, Object>)_joinQueryObject.get("from"));
+        String toIndex = getLastIndexName((Map<String, Object>)_joinQueryObject.get("to"));
+        SolrIndexSearcher fromSearcher = searcherMap.get(fromIndex);
+        SolrIndexSearcher toSearcher = searcherMap.get(toIndex);
+        
+        String[] onArray = ((String)_joinQueryObject.get("on")).split("\\-\\>");
+        String fromField = onArray[0];
+        String toField = onArray[1];
+        resultDocSet = getDocSetNewWithCache(fromSearcher, toSearcher, fromField, toField, fromDocSet);
+        
+        DocSet toDocSet = getDocSet((Map<String, Object>)_joinQueryObject.get("to"));
+        if(toDocSet != null){
+          DocSet tempDocSet = resultDocSet.intersection(toDocSet);
           resultDocSet.decref();
-          toSet.decref();
-          resultDocSet = newResultDocSet;
+          toDocSet.decref();
+          resultDocSet = tempDocSet;
         }
-        if("true".equals(_joinQueryObject.get("$not"))){
-          DocSet allToSet = toSearcher.getPositiveDocSet(new MatchAllDocsQuery());
-          DocSet newResultDocSet = allToSet.andNot(resultDocSet);
-          allToSet.decref();
-          resultDocSet.decref();
-          resultDocSet = newResultDocSet;
+      }else if(_queryObject.containsKey("$not")){
+        DocSet toDocSet = getDocSet((Map<String, Object>)_queryObject.get("$not"));
+        String index = getLastIndexName((Map<String, Object>)_queryObject.get("$not"));
+        DocSet allDocSet = searcherMap.get(index).getDocSet(new MatchAllDocsQuery());
+        resultDocSet = allDocSet.andNot(toDocSet);
+        allDocSet.decref();
+        toDocSet.decref();
+      }else{
+        String op = "";
+        if(_queryObject.containsKey("$and")){
+          op = "$and";
+        }else if(_queryObject.containsKey("$or")){
+          op = "$or";
         }
         
-      }else{
-        List<Map<String, Object>> joinQueryList = (List<Map<String, Object>>)_joinQueryObject.get(op);
-        DocSet prevJoinResult = null;
-        for(Map<String, Object> joinQuerySubObject : joinQueryList){
-          DocSet subDocSet = getDocSet(joinQuerySubObject, prevJoinResult);
-          if(prevJoinResult != null)prevJoinResult.decref();
-          if(resultDocSet == null){
-            resultDocSet = subDocSet;
-          }else{
-            if(op.equals("$and")){
-              DocSet tempDocSet = resultDocSet.intersection(subDocSet);
-              resultDocSet.decref();
-              subDocSet.decref();
-              resultDocSet = tempDocSet;
-            }else if(op.equals("$or")){
-              DocSet tempDocSet = resultDocSet.union(subDocSet);
-              resultDocSet.decref();
-              subDocSet.decref();
-              resultDocSet = tempDocSet;
-            }else if(op.equals("$chain")){
-              prevJoinResult = resultDocSet = subDocSet;
-            }
+        if(op.isEmpty()){
+          SolrIndexSearcher searcher = searcherMap.get((String)_queryObject.get("index"));
+          if(_queryObject.containsKey("parsedq")){
+            Query parsedq = (Query)_queryObject.get("parsedq");
+            resultDocSet = searcher.getDocSet(parsedq);
           }
-          
+        }else{
+          List<Map<String, Object>> joinQueryList = (List<Map<String, Object>>)_queryObject.get(op);
+          for(Map<String, Object> joinQuerySubObject : joinQueryList){
+            DocSet subDocSet = getDocSet(joinQuerySubObject);
+            DocSet tempDocSet = null;
+            if(resultDocSet == null){
+              resultDocSet = subDocSet;
+            }else{
+              switch(op){
+                case "$and":
+                  tempDocSet = resultDocSet.intersection(subDocSet);
+                  resultDocSet.decref();
+                  subDocSet.decref();
+                  resultDocSet = tempDocSet;
+                  break;
+                case "$or":
+                  tempDocSet = resultDocSet.union(subDocSet);
+                  resultDocSet.decref();
+                  subDocSet.decref();
+                  resultDocSet = tempDocSet;
+                  break;
+              }
+            }    
+          }
         }
       }
       return resultDocSet;
+    }
+    
+    private String getLastIndexName(Map<String, Object> _queryObject){
+      if(_queryObject.containsKey("$join")){
+        return getLastIndexName((Map<String, Object>)((Map<String, Object>)_queryObject.get("$join")).get("to"));
+      }else if(_queryObject.containsKey("$not")){
+        return getLastIndexName((Map<String, Object>)_queryObject.get("$not"));
+      }else{
+        String op = "";
+        if(_queryObject.containsKey("$and")){
+          op = "$and";
+        }else if(_queryObject.containsKey("$or")){
+          op = "$or";
+        }
+        
+        if(op.isEmpty()){
+          return (String)_queryObject.get("index");
+        }else{
+          List<Map<String, Object>> queryList = (List<Map<String, Object>>)_queryObject.get(op);
+          if(!queryList.isEmpty()){
+            return getLastIndexName(queryList.get(0));
+          }
+        }
+      }
+      return null;
     }
     
 //    public DocSet getDocSetFromJoinChain() throws IOException{
