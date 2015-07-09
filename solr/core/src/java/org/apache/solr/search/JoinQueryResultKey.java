@@ -20,17 +20,17 @@ import org.apache.lucene.search.SortField;
  */
 
 public class JoinQueryResultKey {
-  String toIndex = "";
+  String fromIndex = "";
   String fromField = "";
   String toField = "";
   
   private final int hc;  // cached hashCode
   
-  public JoinQueryResultKey(String toIndex, String fromField, String toField){
-    this.toIndex = toIndex;
+  public JoinQueryResultKey(String fromIndex, String fromField, String toField){
+    this.fromIndex = fromIndex;
     this.fromField = fromField;
     this.toField = toField;
-    hc = this.toIndex.hashCode() + this.fromField.hashCode() + this.toField.hashCode();
+    hc = this.fromIndex.hashCode() + this.fromField.hashCode() + this.toField.hashCode();
   }
   
   @Override
@@ -51,7 +51,7 @@ public class JoinQueryResultKey {
 
     // check for the thing most likely to be different (and the fastest things)
     // first.
-    if (!this.toIndex.equals(other.toIndex)) return false;
+    if (!this.fromIndex.equals(other.fromIndex)) return false;
     if (!this.fromField.equals(other.fromField)) return false;
     if (!this.toField.equals(other.toField)) return false;
 

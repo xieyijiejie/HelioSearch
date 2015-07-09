@@ -252,7 +252,7 @@ class JoinJsonQuery extends Query {
     }
     
     private int[][] buildJoinResultCache(SolrIndexSearcher fromSearcher, SolrIndexSearcher toSearcher, String fromField, String toField){
-      JoinQueryResultKey jqrk = new JoinQueryResultKey(fromSearcher.getName(), fromField, toField);
+      JoinQueryResultKey jqrk = new JoinQueryResultKey(fromSearcher.getCore().getName(), fromField, toField);
       if(!rb.req.getParams().getBool("refreshCache", false) && toSearcher.joinQueryResultCache.get(jqrk) != null){
         System.out.println("Cache Hit");
         return toSearcher.joinQueryResultCache.get(jqrk);
