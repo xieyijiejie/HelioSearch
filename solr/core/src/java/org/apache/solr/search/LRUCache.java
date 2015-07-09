@@ -54,7 +54,7 @@ public class LRUCache<K,V> extends SolrCacheBase implements SolrCache<K,V> {
 
   private long warmupTime = 0;
 
-  private Map<K,V> map;
+  public Map<K,V> map;
   private String description="LRU Cache";
 
   @Override

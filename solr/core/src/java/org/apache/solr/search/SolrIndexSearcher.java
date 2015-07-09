@@ -404,7 +404,28 @@ public class SolrIndexSearcher extends IndexSearcher implements Closeable,SolrIn
     for (SolrCache cache : cacheList) {
       cache.close();
     }
-
+    
+    //Added by Zhitao 2015-07-09
+    //当本core被更新时，这个SolrIndexSearcher会被关掉，在这个地方，将其他Core中用到了本Core的Join缓存清除
+    //TODO 是否有线程安全问题，需要上锁？当这个Cache正在被读取时
+    CoreContainer container = core.getCoreDescriptor().getCoreContainer();
+    for(SolrCore otherCore : container.getCores()){
+      RefCounted<SolrIndexSearcher> coreRef = otherCore.getSearcher();
+      SolrIndexSearcher searcher = coreRef.get();
+      if(searcher.joinQueryResultCache != null){
+        if(searcher.joinQueryResultCache instanceof LRUCache){
+          Set<JoinQueryResultKey> keySet = (Set<JoinQueryResultKey>)((LRUCache)searcher.joinQueryResultCache).map.keySet();
+          for(JoinQueryResultKey key : keySet){
+            if(this.core.getName().equals(key.fromIndex)){
+              ((LRUCache)searcher.joinQueryResultCache).map.remove(key);
+            }
+          }
+        }
+      }
+      coreRef.decref();
+    }
+    //End add by zhitao
+    
     if (reserveDirectory) {
       directoryFactory.release(getIndexReader().directory());
     }
