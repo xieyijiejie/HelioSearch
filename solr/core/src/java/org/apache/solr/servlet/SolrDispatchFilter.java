@@ -372,6 +372,12 @@ public class SolrDispatchFilter extends BaseSolrFilter {
           // Determine the handler from the url path if not set
           // (we might already have selected the cores handler)
           if( handler == null && path.length() > 1 ) { // don't match "" or "/" as valid path
+            if(path.startsWith("/update") && !cores.writable){
+              throw new SolrException( SolrException.ErrorCode.FORBIDDEN, "Solr is in write protected!!! Can't accept any update request");
+            }
+            if(path.startsWith("/select") && !cores.readable){
+              throw new SolrException( SolrException.ErrorCode.FORBIDDEN, "Solr is in read protected!!! Can't accept any query request");
+            }
             handler = core.getRequestHandler( path );
             // no handler yet but allowed to handle select; let's check
             if( handler == null && parser.isHandleSelect() ) {
@@ -724,10 +730,23 @@ public class SolrDispatchFilter extends BaseSolrFilter {
 
   private void handleAdminRequest(HttpServletRequest req, ServletResponse response, SolrRequestHandler handler,
                                   SolrQueryRequest solrReq) throws IOException {
+    if("true".equalsIgnoreCase(req.getParameter("readable"))){
+      this.getCores().readable = true;
+    }else if("false".equalsIgnoreCase(req.getParameter("readable"))){
+      this.getCores().readable = false;
+    }
+    if("true".equalsIgnoreCase(req.getParameter("writable"))){
+      this.getCores().writable = true;
+    }else if("false".equalsIgnoreCase(req.getParameter("writable"))){
+      this.getCores().writable = false;
+    }
+    
     SolrQueryResponse solrResp = new SolrQueryResponse();
     SolrCore.preDecorateResponse(solrReq, solrResp);
     handler.handleRequest(solrReq, solrResp);
     SolrCore.postDecorateResponse(handler, solrReq, solrResp);
+    solrResp.add("readable", this.getCores().readable);
+    solrResp.add("writable", this.getCores().writable);
     if (log.isInfoEnabled() && solrResp.getToLog().size() > 0) {
       log.info(solrResp.getToLogAsString("[admin] "));
     }

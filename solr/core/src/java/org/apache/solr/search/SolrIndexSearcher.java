@@ -411,18 +411,23 @@ public class SolrIndexSearcher extends IndexSearcher implements Closeable,SolrIn
     CoreContainer container = core.getCoreDescriptor().getCoreContainer();
     for(SolrCore otherCore : container.getCores()){
       RefCounted<SolrIndexSearcher> coreRef = otherCore.getSearcher();
-      SolrIndexSearcher searcher = coreRef.get();
-      if(searcher.joinQueryResultCache != null){
-        if(searcher.joinQueryResultCache instanceof LRUCache){
-          Set<JoinQueryResultKey> keySet = (Set<JoinQueryResultKey>)((LRUCache)searcher.joinQueryResultCache).map.keySet();
-          for(JoinQueryResultKey key : keySet){
-            if(this.core.getName().equals(key.fromIndex)){
-              ((LRUCache)searcher.joinQueryResultCache).map.remove(key);
+      try{
+        SolrIndexSearcher searcher = coreRef.get();
+        if(searcher.joinQueryResultCache != null){
+          if(searcher.joinQueryResultCache instanceof LRUCache){
+            Set<JoinQueryResultKey> keySet = (Set<JoinQueryResultKey>)((LRUCache)searcher.joinQueryResultCache).map.keySet();
+            for(JoinQueryResultKey key : keySet){
+              if(this.core.getName().equals(key.fromIndex)){
+                ((LRUCache)searcher.joinQueryResultCache).map.remove(key);
+              }
             }
+          }else{
+            throw new RuntimeException("Only Support LRUCache");
           }
         }
+      }finally{
+        if(coreRef != null)coreRef.decref();
       }
-      coreRef.decref();
     }
     //End add by zhitao
     

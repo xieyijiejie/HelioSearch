@@ -854,7 +854,7 @@ public class UnInvertedField extends DocTermOrds {
 
         int code = index[doc];
 
-        if ((code & 0xff)==1) {
+        if ((code & 0xff)==1) {                 //如果第一位是1，则剩下的三个字节是表示指针，a pointer into a byte[] where the termNumber list starts
           int pos = code>>>8;
           int whichArray = (doc >>> 16) & 0xff;
           byte[] arr = tnums[whichArray];
@@ -878,8 +878,8 @@ public class UnInvertedField extends DocTermOrds {
           int tnum = 0;
           int delta = 0;
           for (;;) {
-            delta = (delta << 7) | (code & 0x7f);
-            if ((code & 0x80)==0) {
+            delta = (delta << 7) | (code & 0x7f); //delta的右边第一位拼上code的右边7位
+            if ((code & 0x80)==0) {               //如果code的第一位是0
               if (delta==0) break;
               tnum += delta - TNUM_OFFSET;
               int arrIdx = tnum - startTermIndex;

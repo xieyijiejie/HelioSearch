@@ -98,6 +98,8 @@ public class CoreContainer {
   protected final CoresLocator coresLocator;
   
   private String hostName;
+  public boolean readable = true;
+  public boolean writable = true;
   
  // private ClientConnectionManager clientConnectionManager = new PoolingClientConnectionManager();
 
