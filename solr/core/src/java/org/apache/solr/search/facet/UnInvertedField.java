@@ -17,15 +17,28 @@ package org.apache.solr.search.facet;
  * limitations under the License.
  */
 
+import java.io.Closeable;
+import java.io.IOException;
+import java.util.ArrayList;
+import java.util.HashSet;
+import java.util.Iterator;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
+import java.util.concurrent.atomic.AtomicLong;
+
 import org.apache.lucene.index.AtomicReader;
 import org.apache.lucene.index.AtomicReaderContext;
 import org.apache.lucene.index.DocTermOrds;
 import org.apache.lucene.index.SortedDocValues;
 import org.apache.lucene.index.Term;
 import org.apache.lucene.index.TermsEnum;
+import org.apache.lucene.search.Query;
 import org.apache.lucene.search.TermQuery;
 import org.apache.lucene.search.TermRangeQuery;
 import org.apache.lucene.util.BytesRef;
+import org.apache.lucene.util.BytesRefHash;
 import org.apache.lucene.util.CharsRef;
 import org.apache.lucene.util.FixedBitSet;
 import org.apache.lucene.util.PriorityQueue;
@@ -34,10 +47,12 @@ import org.apache.solr.common.SolrException;
 import org.apache.solr.common.params.FacetParams;
 import org.apache.solr.common.util.NamedList;
 import org.apache.solr.common.util.SimpleOrderedMap;
+import org.apache.solr.core.CoreContainer;
 import org.apache.solr.core.SolrCore;
 import org.apache.solr.handler.component.FieldFacetStats;
 import org.apache.solr.handler.component.StatsValues;
 import org.apache.solr.handler.component.StatsValuesFactory;
+import org.apache.solr.request.LocalSolrQueryRequest;
 import org.apache.solr.schema.FieldType;
 import org.apache.solr.schema.SchemaField;
 import org.apache.solr.schema.TrieField;
@@ -45,21 +60,15 @@ import org.apache.solr.search.BitDocSet;
 import org.apache.solr.search.BitDocSetNative;
 import org.apache.solr.search.DocIterator;
 import org.apache.solr.search.DocSet;
+import org.apache.solr.search.QParser;
 import org.apache.solr.search.QueryContext;
 import org.apache.solr.search.SolrCache;
 import org.apache.solr.search.SolrIndexSearcher;
+import org.apache.solr.search.SyntaxError;
 import org.apache.solr.search.facet.SimpleFacetStats.Slot;
 import org.apache.solr.util.LongPriorityQueue;
 import org.apache.solr.util.PrimUtils;
-
-import java.io.Closeable;
-import java.io.IOException;
-import java.util.ArrayList;
-import java.util.Iterator;
-import java.util.LinkedHashMap;
-import java.util.List;
-import java.util.Map;
-import java.util.concurrent.atomic.AtomicLong;
+import org.apache.solr.util.RefCounted;
 
 /**
  *
@@ -303,6 +312,142 @@ public class UnInvertedField extends DocTermOrds {
     public void call(int termNum);
   }
 
+  //Zhitao - 转字串用Set<String>效率太低，需要改进
+  public Set<String> getBytesRef(SolrIndexSearcher searcher, DocSet baseDocs){
+//    BytesRefHash bytesRefHash = new BytesRefHash();
+    Set<String> bytesSet = new HashSet<String>();
+    use.incrementAndGet();
+
+    DocSet docs = baseDocs;
+    int baseSize = docs.size();
+    int maxDoc = searcher.maxDoc();
+
+    try {
+      final int[] index = this.index;
+      // tricky: we add more more element than we need because we will reuse this array later
+      // for ordering term ords before converting to term labels.
+      final int[] counts = new int[numTermsInField + 1];
+
+      //
+      // If there is prefix, find it's start and end term numbers
+      //
+      int startTerm = 0;
+      int endTerm = numTermsInField;  // one past the end
+
+      TermsEnum te = getOrdTermsEnum(searcher.getAtomicReader());
+//      boolean doNegative = baseSize > maxDoc >> 1 && termInstances > 0
+//          && startTerm==0 && endTerm==numTermsInField
+//          && (docs instanceof BitDocSet || docs instanceof BitDocSetNative);
+//
+//      if (doNegative) {
+//        // TODO: when iterator across negative elements is available, use that
+//        // instead of creating a new bitset and inverting.
+//
+//        if (docs instanceof BitDocSet) {
+//          FixedBitSet bs = ((BitDocSet)docs).getBits().clone();
+//          bs = bs.clone(); // don't mess with internal obs of BitDocSet
+//          bs.flip(0, maxDoc);
+//          docs = new BitDocSet(bs, maxDoc - baseSize);
+//        } else {
+//          BitDocSetNative negSet = ((BitDocSetNative)docs).clone();
+//          negSet.flip(0, maxDoc);
+//          negSet.setSize(maxDoc - baseSize);
+//          docs = negSet;
+//        }
+//
+//        // simply negating will mean that we have deleted docs in the set.
+//        // that should be OK, as their entries in our table should be empty.
+//        //System.out.println("  NEG");
+//      }
+
+      // For the biggest terms, do straight set intersections
+      for (TopTerm tt : bigTerms.values()) {
+        //System.out.println("  do big termNum=" + tt.termNum + " term=" + tt.term.utf8ToString());
+        // TODO: counts could be deferred if sorted==false
+        if (tt.termNum >= startTerm && tt.termNum < endTerm) {
+          counts[tt.termNum] = searcher.numDocs(new TermQuery(new Term(field, tt.term)), docs);
+//          bytesRefHash.add(this.getTermValue(te, tt.termNum));
+          //System.out.println("    count=" + counts[tt.termNum]);
+        } else {
+          //System.out.println("SKIP term=" + tt.termNum);
+        }
+      }
+
+      // TODO: we could short-circuit counting altogether for sorted faceting
+      // where we already have enough terms from the bigTerms
+
+      // TODO: we could shrink the size of the collection array, and
+      // additionally break when the termNumber got above endTerm, but
+      // it would require two extra conditionals in the inner loop (although
+      // they would be predictable for the non-prefix case).
+      // Perhaps a different copy of the code would be warranted.
+
+      if (termInstances > 0) {
+        DocIterator iter = docs.iterator();
+        while (iter.hasNext()) {
+          int doc = iter.nextDoc();
+          //System.out.println("iter doc=" + doc);
+          int code = index[doc];
+
+          if ((code & 0xff)==1) {
+            //System.out.println("  ptr");
+            int pos = code>>>8;
+            int whichArray = (doc >>> 16) & 0xff;
+            byte[] arr = tnums[whichArray];
+            int tnum = 0;
+            for(;;) {
+              int delta = 0;
+              for(;;) {
+                byte b = arr[pos++];
+                delta = (delta << 7) | (b & 0x7f);
+                if ((b & 0x80) == 0) break;
+              }
+              if (delta == 0) break;
+              tnum += delta - TNUM_OFFSET;
+              //System.out.println("    tnum=" + tnum);
+              counts[tnum]++;
+//              BytesRef br = BytesRef.deepCopyOf(this.getTermValue(te, tnum));
+//              bytesRefHash.add(this.getTermValue(te, tnum));
+            }
+          } else {
+            //System.out.println("  inlined");
+            int tnum = 0;
+            int delta = 0;
+            for (;;) {
+              delta = (delta << 7) | (code & 0x7f);
+              if ((code & 0x80)==0) {
+                if (delta==0) break;
+                tnum += delta - TNUM_OFFSET;
+                //System.out.println("    tnum=" + tnum);
+                counts[tnum]++;
+//                BytesRef br = BytesRef.deepCopyOf(this.getTermValue(te, tnum));
+//                bytesRefHash.add(this.getTermValue(te, tnum));
+                delta = 0;
+              }
+              code >>>= 8;
+            }
+          }
+        }
+        for(int i = 0 ; i < numTermsInField ; i++ ){
+          if(counts[i] > 0){
+            bytesSet.add(this.getTermValue(te, i).utf8ToString());
+//            bytesRefHash.add(this.getTermValue(te, i));
+          }
+        }
+      }
+
+    } catch (IOException e) {
+      throw new RuntimeException();
+    } finally {
+      if (docs != baseDocs) {
+        // if doNegative, release the negative set
+        docs.decref();
+        docs = null;
+      }
+    }
+    
+    return bytesSet;
+  }
 
   public NamedList<Integer> getCounts(SolrIndexSearcher searcher, DocSet baseDocs, int offset, int limit, Integer mincount, boolean missing, String sort, String prefix) throws IOException {
     use.incrementAndGet();
@@ -801,11 +946,11 @@ public class UnInvertedField extends DocTermOrds {
     DocSet docs = processor.fcontext.base;
     int startTermIndex = processor.startTermIndex;
     int endTermIndex = processor.endTermIndex;
-    int nTerms = processor.nTerms;
-
+    int nTerms = processor.nTerms;//这个field上所有term的个数，不是当前query下的
+    int[] termStatus = new int[nTerms];
     int uniqueTerms = 0;
 
-    for (TopTerm tt : bigTerms.values()) {
+    for (TopTerm tt : bigTerms.values()) {  //bitTerms就是文档数大于一定值的term,由maxTermDocFreq指定
       if (tt.termNum >= startTermIndex && tt.termNum < endTermIndex) {
         // handle the biggest terms
         try ( DocSet intersection = searcher.getDocSet(new TermQuery(new Term(field, tt.term)), docs); )
@@ -831,7 +976,44 @@ public class UnInvertedField extends DocTermOrds {
 
       // TODO: handle facet.prefix here!!!
 
+      
+      // Zhitao: handle facet filter here
+//      BytesRefHash termHash = null;
+      Set<String> termSet = null;
+      if(processor.freq.filter != null){
+        String indexName = processor.freq.filter.get("index");
+        CoreContainer container = searcher.getCore().getCoreDescriptor().getCoreContainer();
+        final SolrCore core = container.getCore(indexName);
+        if (core == null) {
+          throw new SolrException(SolrException.ErrorCode.BAD_REQUEST, "Cross-core join: no such core " + indexName);
+        }
+        RefCounted<SolrIndexSearcher> coreRef = core.getSearcher(false, true, null);
+//        searcherMap.put(indexName, coreRef.get());
+       
+        try {
+          long s1 = System.currentTimeMillis();
+          QParser parser = QParser.getParser(processor.freq.filter.get("q")
+              , "lucene", new LocalSolrQueryRequest(core, processor.fcontext.req.getParams()));
+          Query q = parser.getQuery();
+          SolrIndexSearcher filterSearcher = coreRef.get();
+          DocSet resultDocSet = filterSearcher.getDocSet(q);
+          long s2 = System.currentTimeMillis();
+          System.out.println("getDocSet Time: " + (s2-s1));
+          UnInvertedField filteruif =  UnInvertedField.getUnInvertedField(processor.freq.filter.get("field"), filterSearcher);
+          long s3 = System.currentTimeMillis();
+          System.out.println("getUnInvertedField Time: " + (s3-s2));
+          termSet = filteruif.getBytesRef(filterSearcher, resultDocSet);
+          long s4 = System.currentTimeMillis();
+          System.out.println("getBytesRef Time: " + (s4-s3));
+        } catch (SyntaxError e) {
+          throw new RuntimeException();
+        }
+        coreRef.decref();
+        core.close();
+      }
+      TermsEnum te = this.getOrdTermsEnum(searcher.getAtomicReader());
       DocIterator iter = docs.iterator();
+      long s5 = 0L;
       while (iter.hasNext()) {
         int doc = iter.nextDoc();
 
@@ -852,7 +1034,7 @@ public class UnInvertedField extends DocTermOrds {
         int segDoc = doc - segBase;
 
 
-        int code = index[doc];
+        int code = index[doc];//univerted索引，index里面有每个doc在该field上的term信息
 
         if ((code & 0xff)==1) {                 //如果第一位是1，则剩下的三个字节是表示指针，a pointer into a byte[] where the termNumber list starts
           int pos = code>>>8;
@@ -871,8 +1053,35 @@ public class UnInvertedField extends DocTermOrds {
             int arrIdx = tnum - startTermIndex;
             if (arrIdx < 0) continue;
             if (arrIdx >= nTerms) break;
-            processor.countAcc.incrementCount(arrIdx, 1);
-            processor.collect(arrIdx, segDoc);
+            
+            //TODO 验证term
+            if(termSet != null){
+              if(termStatus[arrIdx] == 1){
+                //要
+                processor.countAcc.incrementCount(arrIdx, 1);
+                processor.collect(arrIdx, segDoc);
+              }else if(termStatus[arrIdx] == 0){
+                //不知道
+//                if(termHash.find(getTermValue(te, tnum)) != -1){
+                long s11 = System.currentTimeMillis();
+                if(termSet.contains(getTermValue(te, tnum).utf8ToString())){
+                  termStatus[arrIdx] = 1;
+                  processor.countAcc.incrementCount(arrIdx, 1);
+                  processor.collect(arrIdx, segDoc);
+                }else{
+                  termStatus[arrIdx] = -1;
+                }
+                s5 += (System.currentTimeMillis() - s11);
+              }else{
+                //不要
+              }
+//              if(termStatus[arrIdx] == 1/*termHash.find(getTermValue(te, tnum)) != -1*/){
+//
+//              }
+            }else{
+              processor.countAcc.incrementCount(arrIdx, 1);
+              processor.collect(arrIdx, segDoc);
+            }
           }
         } else {
           int tnum = 0;
@@ -882,17 +1091,43 @@ public class UnInvertedField extends DocTermOrds {
             if ((code & 0x80)==0) {               //如果code的第一位是0
               if (delta==0) break;
               tnum += delta - TNUM_OFFSET;
+
               int arrIdx = tnum - startTermIndex;
               if (arrIdx < 0) continue;
               if (arrIdx >= nTerms) break;
-              processor.countAcc.incrementCount(arrIdx, 1);
-              processor.collect(arrIdx, segDoc);
+              
+              //TODO 验证term
+              if(termSet != null){
+                if(termStatus[arrIdx] == 1){
+                  //要
+                  processor.countAcc.incrementCount(arrIdx, 1);
+                  processor.collect(arrIdx, segDoc);
+                }else if(termStatus[arrIdx] == 0){
+                  //不知道
+//                  if(termHash.find(getTermValue(te, tnum)) != -1){
+                  long s11 = System.currentTimeMillis();
+                  if(termSet.contains(getTermValue(te, tnum).utf8ToString())){
+                    termStatus[arrIdx] = 1;
+                    processor.countAcc.incrementCount(arrIdx, 1);
+                    processor.collect(arrIdx, segDoc);
+                  }else{
+                    termStatus[arrIdx] = -1;
+                  }
+                  s5 += (System.currentTimeMillis() - s11);
+                }else{
+                  //不要
+                }
+              }else{
+                processor.countAcc.incrementCount(arrIdx, 1);
+                processor.collect(arrIdx, segDoc);
+              }
               delta = 0;
             }
             code >>>= 8;
           }
         }
       }
+      System.out.println("s5: " + s5);
     }
 
 

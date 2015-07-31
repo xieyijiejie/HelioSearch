@@ -275,8 +275,14 @@ public class DocTermOrds implements Accountable {
     prefix = termPrefix == null ? null : BytesRef.deepCopyOf(termPrefix);
 
     final int maxDoc = reader.maxDoc();
+    
+    //真正存uninvert数据的数组
     final int[] index = new int[maxDoc];       // immediate term numbers, or the index into the byte[] representing the last number
+    
+    //??每个doc的最后一个term
     final int[] lastTerm = new int[maxDoc];    // last term we saw for this document
+    
+    //??每个doc的term个数，用vInt存
     final byte[][] bytes = new byte[maxDoc][]; // list of term numbers for the doc (delta encoded vInts)
 
     final Fields fields = reader.fields();
@@ -284,7 +290,7 @@ public class DocTermOrds implements Accountable {
       // No terms
       return;
     }
-    final Terms terms = fields.terms(field);
+    final Terms terms = fields.terms(field);  //取改field的terms,如果是多值的就是MultiTerms
     if (terms == null) {
       // No terms
       return;
@@ -293,7 +299,7 @@ public class DocTermOrds implements Accountable {
     final TermsEnum te = terms.iterator(null);
     final BytesRef seekStart = termPrefix != null ? termPrefix : new BytesRef();
     //System.out.println("seekStart=" + seekStart.utf8ToString());
-    if (te.seekCeil(seekStart) == TermsEnum.SeekStatus.END) {
+    if (te.seekCeil(seekStart) == TermsEnum.SeekStatus.END) {   //先检测一下，如果第一个就没有，直接返回，也是先定个位
       // No terms match
       return;
     }
@@ -303,7 +309,7 @@ public class DocTermOrds implements Accountable {
     List<BytesRef> indexedTerms = null;
     PagedBytes indexedTermsBytes = null;
 
-    boolean testedOrd = false;
+    boolean testedOrd = false;    //好像就是标志一下第一次循环，测一下ord方法是不是支持
 
     // we need a minimum of 9 bytes, but round up to 12 since the space would
     // be wasted with most allocators anyway.
@@ -331,13 +337,13 @@ public class DocTermOrds implements Accountable {
     // Loop begins with te positioned to first term (we call
     // seek above):
     for (;;) {
-      final BytesRef t = te.term();
+      final BytesRef t = te.term();   //当前的term值
       if (t == null || (termPrefix != null && !StringHelper.startsWith(t, termPrefix))) {
         break;
       }
       //System.out.println("visit term=" + t.utf8ToString() + " " + t + " termNum=" + termNum);
 
-      if (!testedOrd) {
+      if (!testedOrd) {   //第一次进，后面循环都不进了
         try {
           ordBase = (int) te.ord();
           //System.out.println("got ordBase=" + ordBase);
@@ -351,27 +357,27 @@ public class DocTermOrds implements Accountable {
         testedOrd = true;
       }
 
-      visitTerm(te, termNum);
+      visitTerm(te, termNum); //测一下，是bigTerm就放到bigTerm里面去了
 
       if (indexedTerms != null && (termNum & indexIntervalMask) == 0) {
         // Index this term
         sizeOfIndexedStrings += t.length;
         BytesRef indexedTerm = new BytesRef();
-        indexedTermsBytes.copy(t, indexedTerm);
+        indexedTermsBytes.copy(t, indexedTerm);   //把当前的term拷贝到indexedTerm中了
         // TODO: really should 1) strip off useless suffix,
         // and 2) use FST not array/PagedBytes
-        indexedTerms.add(indexedTerm);
+        indexedTerms.add(indexedTerm);    //把indexedTerm加入indexedTerms中
       }
 
       final int df = te.docFreq();
-      if (df <= maxTermDocFreq) {
+      if (df <= maxTermDocFreq) {    // maxTermDocFreq,最大df, 在构造函数里传值设置为searcher.maxDoc()/20 + 2
 
-        docsEnum = te.docs(liveDocs, docsEnum, DocsEnum.FLAG_NONE);
+        docsEnum = te.docs(liveDocs, docsEnum, DocsEnum.FLAG_NONE);   //取te对应的doc列表，放在docsEnum中
 
         // dF, but takes deletions into account
         int actualDF = 0;
 
-        for (;;) {
+        for (;;) {    //开始遍历doc列表
           int doc = docsEnum.nextDoc();
           if (doc == DocIdSetIterator.NO_MORE_DOCS) {
             break;
@@ -379,12 +385,12 @@ public class DocTermOrds implements Accountable {
           //System.out.println("  chunk=" + chunk + " docs");
 
           actualDF ++;
-          termInstances++;
+          termInstances++;  //这样看了，termInstances应该是所有term在所有doc中出现的次数了
           
           //System.out.println("    docID=" + doc);
           // add TNUM_OFFSET to the term number to make room for special reserved values:
           // 0 (end term) and 1 (index into byte array follows)
-          int delta = termNum - lastTerm[doc] + TNUM_OFFSET;
+          int delta = termNum - lastTerm[doc] + TNUM_OFFSET;  //delta为当前term相距前一个的差值，在加上TNUM_OFFSET
           lastTerm[doc] = termNum;
           int val = index[doc];
 
@@ -450,7 +456,7 @@ public class DocTermOrds implements Accountable {
             }
           }
         }
-        setActualDocFreq(termNum, actualDF);
+        setActualDocFreq(termNum, actualDF);  //设置这个term的df,存在maxTermCounts里面
       }
 
       termNum++;
@@ -459,7 +465,7 @@ public class DocTermOrds implements Accountable {
       }
     }
 
-    numTermsInField = termNum;
+    numTermsInField = termNum;    //一共多少个term
 
     long midPoint = System.currentTimeMillis();
 
