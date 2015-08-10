@@ -674,6 +674,7 @@ class FacetFieldParser extends FacetParser<FacetField> {
             sortStr.length() - " desc".length());
         facet.sortDirection = FacetField.SortDirection.desc;
       } else {
+        facet.sortVariable = sortStr;
         facet.sortDirection = "index".equals(facet.sortVariable) ? FacetField.SortDirection.asc
             : FacetField.SortDirection.desc; // default direction for "index" is
                                              // ascending
