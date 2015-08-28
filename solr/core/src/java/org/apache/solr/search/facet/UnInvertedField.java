@@ -38,7 +38,6 @@ import org.apache.lucene.search.Query;
 import org.apache.lucene.search.TermQuery;
 import org.apache.lucene.search.TermRangeQuery;
 import org.apache.lucene.util.BytesRef;
-import org.apache.lucene.util.BytesRefHash;
 import org.apache.lucene.util.CharsRef;
 import org.apache.lucene.util.FixedBitSet;
 import org.apache.lucene.util.PriorityQueue;
@@ -60,6 +59,7 @@ import org.apache.solr.search.BitDocSet;
 import org.apache.solr.search.BitDocSetNative;
 import org.apache.solr.search.DocIterator;
 import org.apache.solr.search.DocSet;
+import org.apache.solr.search.JoinJsonQParserPlugin;
 import org.apache.solr.search.QParser;
 import org.apache.solr.search.QueryContext;
 import org.apache.solr.search.SolrCache;
@@ -313,7 +313,7 @@ public class UnInvertedField extends DocTermOrds {
   }
 
   //Zhitao - 转字串用Set<String>效率太低，需要改进
-  public Set<String> getBytesRef(SolrIndexSearcher searcher, DocSet baseDocs){
+  public int[] getBytesRef(SolrIndexSearcher searcher, DocSet baseDocs){
 //    BytesRefHash bytesRefHash = new BytesRefHash();
     Set<String> bytesSet = new HashSet<String>();
     use.incrementAndGet();
@@ -321,12 +321,13 @@ public class UnInvertedField extends DocTermOrds {
     DocSet docs = baseDocs;
     int baseSize = docs.size();
     int maxDoc = searcher.maxDoc();
-
+    
+    final int[] counts = new int[numTermsInField + 1];
     try {
       final int[] index = this.index;
       // tricky: we add more more element than we need because we will reuse this array later
       // for ordering term ords before converting to term labels.
-      final int[] counts = new int[numTermsInField + 1];
+      
 
       //
       // If there is prefix, find it's start and end term numbers
@@ -428,12 +429,11 @@ public class UnInvertedField extends DocTermOrds {
             }
           }
         }
-        for(int i = 0 ; i < numTermsInField ; i++ ){
-          if(counts[i] > 0){
-            bytesSet.add(this.getTermValue(te, i).utf8ToString());
-//            bytesRefHash.add(this.getTermValue(te, i));
-          }
-        }
+//        for(int i = 0 ; i < numTermsInField ; i++ ){
+//          if(counts[i] > 0){
+//            bytesSet.add(this.getTermValue(te, i).utf8ToString());
+//          }
+//        }
       }
 
     } catch (IOException e) {
@@ -446,7 +446,7 @@ public class UnInvertedField extends DocTermOrds {
       }
     }
     
-    return bytesSet;
+    return counts;
   }
 
   public NamedList<Integer> getCounts(SolrIndexSearcher searcher, DocSet baseDocs, int offset, int limit, Integer mincount, boolean missing, String sort, String prefix) throws IOException {
@@ -979,7 +979,10 @@ public class UnInvertedField extends DocTermOrds {
       
       // Zhitao: handle facet filter here
 //      BytesRefHash termHash = null;
-      Set<String> termSet = null;
+//      Set<String> termSet = null;
+      int[] termCounts = null;
+      TermsEnum filterTermsEnum = null;
+      DocSet resultDocSet = null;
       if(processor.freq.filter != null){
         String indexName = processor.freq.filter.get("index");
         CoreContainer container = searcher.getCore().getCoreDescriptor().getCoreContainer();
@@ -992,17 +995,29 @@ public class UnInvertedField extends DocTermOrds {
        
         try {
           long s1 = System.currentTimeMillis();
-          QParser parser = QParser.getParser(processor.freq.filter.get("q")
-              , "lucene", new LocalSolrQueryRequest(core, processor.fcontext.req.getParams()));
-          Query q = parser.getQuery();
+//          QParser parser = QParser.getParser(processor.freq.filter.get("q")
+//              , "lucene", new LocalSolrQueryRequest(core, processor.fcontext.req.getParams()));
+//          Query q = parser.getQuery();
           SolrIndexSearcher filterSearcher = coreRef.get();
-          DocSet resultDocSet = filterSearcher.getDocSet(q);
+//          filterTermsEnum = filterSearcher.getAtomicReader().terms(processor.freq.filter.get("field")).iterator(null);
+          String jsonjoinquery = String.format("{!jsonjoin}{$join:{from:{index:%s,q:\"%s\"},to:{index:%s,q:\"%s\"},on:\"%s->%s\"}}"
+              , processor.fcontext.req.getCore().getName(), processor.fcontext.req.getParams().get("q")
+              , indexName, processor.freq.filter.get("q")
+              , field, processor.freq.filter.get("field"));
+          System.out.println("jsonjoinquery: " + jsonjoinquery);
+          QParser joinParser = QParser.getParser(jsonjoinquery
+              , "lucene", new LocalSolrQueryRequest(core, processor.fcontext.req.getParams()));
+          Query jjq = joinParser.getQuery();
+          resultDocSet = filterSearcher.getDocSet(jjq);
+          
+//          resultDocSet = filterSearcher.getDocSet(q);
           long s2 = System.currentTimeMillis();
           System.out.println("getDocSet Time: " + (s2-s1));
           UnInvertedField filteruif =  UnInvertedField.getUnInvertedField(processor.freq.filter.get("field"), filterSearcher);
+          filterTermsEnum = filteruif.getOrdTermsEnum(filterSearcher.getAtomicReader());
           long s3 = System.currentTimeMillis();
           System.out.println("getUnInvertedField Time: " + (s3-s2));
-          termSet = filteruif.getBytesRef(filterSearcher, resultDocSet);
+          termCounts = filteruif.getBytesRef(filterSearcher, resultDocSet);
           long s4 = System.currentTimeMillis();
           System.out.println("getBytesRef Time: " + (s4-s3));
         } catch (SyntaxError e) {
@@ -1055,23 +1070,24 @@ public class UnInvertedField extends DocTermOrds {
             if (arrIdx >= nTerms) break;
             
             //TODO 验证term
-            if(termSet != null){
+            if(resultDocSet != null){
               if(termStatus[arrIdx] == 1){
                 //要
                 processor.countAcc.incrementCount(arrIdx, 1);
                 processor.collect(arrIdx, segDoc);
               }else if(termStatus[arrIdx] == 0){
                 //不知道
-//                if(termHash.find(getTermValue(te, tnum)) != -1){
                 long s11 = System.currentTimeMillis();
-                if(termSet.contains(getTermValue(te, tnum).utf8ToString())){
+//                if(termHash.find(getTermValue(te, tnum)) != -1){
+                if(filterTermsEnum.seekExact(getTermValue(te, tnum)) && termCounts[(int) filterTermsEnum.ord()] > 0){
+                  s5 += (System.currentTimeMillis() - s11);
+//                if(termSet.contains(getTermValue(te, tnum).utf8ToString())){
                   termStatus[arrIdx] = 1;
                   processor.countAcc.incrementCount(arrIdx, 1);
                   processor.collect(arrIdx, segDoc);
                 }else{
                   termStatus[arrIdx] = -1;
                 }
-                s5 += (System.currentTimeMillis() - s11);
               }else{
                 //不要
               }
@@ -1097,7 +1113,7 @@ public class UnInvertedField extends DocTermOrds {
               if (arrIdx >= nTerms) break;
               
               //TODO 验证term
-              if(termSet != null){
+              if(resultDocSet != null){
                 if(termStatus[arrIdx] == 1){
                   //要
                   processor.countAcc.incrementCount(arrIdx, 1);
@@ -1106,14 +1122,15 @@ public class UnInvertedField extends DocTermOrds {
                   //不知道
 //                  if(termHash.find(getTermValue(te, tnum)) != -1){
                   long s11 = System.currentTimeMillis();
-                  if(termSet.contains(getTermValue(te, tnum).utf8ToString())){
+                  if(filterTermsEnum.seekExact(getTermValue(te, tnum)) && termCounts[(int) filterTermsEnum.ord()] > 0){
+                    s5 += (System.currentTimeMillis() - s11);
+//                  if(termSet.contains(getTermValue(te, tnum).utf8ToString())){
                     termStatus[arrIdx] = 1;
                     processor.countAcc.incrementCount(arrIdx, 1);
                     processor.collect(arrIdx, segDoc);
                   }else{
                     termStatus[arrIdx] = -1;
                   }
-                  s5 += (System.currentTimeMillis() - s11);
                 }else{
                   //不要
                 }
