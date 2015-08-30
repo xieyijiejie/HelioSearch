@@ -19,6 +19,7 @@ package org.apache.solr.search.facet;
 
 import org.apache.lucene.index.AtomicReaderContext;
 import org.apache.lucene.index.SortedDocValues;
+import org.apache.lucene.index.Terms;
 import org.apache.lucene.search.FieldCache;
 import org.apache.lucene.util.FixedBitSet;
 import org.apache.solr.common.util.NamedList;
@@ -28,6 +29,8 @@ import org.apache.solr.search.field.FieldUtil;
 import org.apache.solr.search.function.FuncValues;
 import org.apache.solr.search.function.ValueSource;
 import org.apache.solr.search.mutable.MutableValueInt;
+
+import com.ctc.wstx.util.StringUtil;
 
 import java.io.IOException;
 
@@ -81,6 +84,107 @@ abstract class FuncSlotAcc extends SlotAcc {
   }
 }
 
+class MinTermSlotAcc extends FuncSlotAcc {
+  String[] result;
+  String initialValue = null;
+  String min = "";
+  public MinTermSlotAcc(MutableValueInt slot, ValueSource values,
+      QueryContext queryContext, int numSlots) {
+    super(slot, values, queryContext, numSlots);
+    result = new String[numSlots];
+    reset();
+  }
+
+  @Override
+  public int compare(int slotA, int slotB) {
+    if(result[slotA] == null) return -1;
+    if(result[slotB] == null) return 1;
+    return result[slotA].compareTo(result[slotB]);
+  }
+
+  @Override
+  public Comparable getGlobalValue() {
+    return min;
+  }
+
+  @Override
+  public void reset() {
+    for (int i=0; i<result.length; i++) {
+      result[i] = initialValue;
+    }
+  }
+
+  @Override
+  public Comparable getValue() {
+    return result[slot.value];
+  }
+
+  public void collect(int doc) {
+    String val = values.strVal(doc);
+    
+    if (val==null) return;  // depend on fact that non existing values return 0 for func query
+    int slotNum = slot.value;  // todo: more efficient to pass it in?
+    String currMin = result[slotNum];
+    if(currMin == null){
+      result[slotNum] = val;
+      min = val;
+    }else if (val.compareTo(currMin) < 0) {  // val>=currMin will be false for staring value: val>=NaN
+      result[slotNum] = val;
+      min = val;
+    }
+  }
+}
+
+class MaxTermSlotAcc extends FuncSlotAcc {
+  String[] result;
+  String initialValue = null;
+  String max = "";
+  public MaxTermSlotAcc(MutableValueInt slot, ValueSource values,
+      QueryContext queryContext, int numSlots) {
+    super(slot, values, queryContext, numSlots);
+    result = new String[numSlots];
+    reset();
+  }
+
+  @Override
+  public int compare(int slotA, int slotB) {
+    if(result[slotA] == null) return -1;
+    if(result[slotB] == null) return 1;
+    return result[slotA].compareTo(result[slotB]);
+  }
+
+  @Override
+  public Comparable getGlobalValue() {
+    return max;
+  }
+
+  @Override
+  public void reset() {
+    for (int i=0; i<result.length; i++) {
+      result[i] = initialValue;
+    }
+  }
+
+  @Override
+  public Comparable getValue() {
+    return result[slot.value];
+  }
+
+  public void collect(int doc) {
+    String val = values.strVal(doc);
+    
+    if (val==null) return;  // depend on fact that non existing values return 0 for func query
+    int slotNum = slot.value;  // todo: more efficient to pass it in?
+    String currMax = result[slotNum];
+    if(currMax == null){
+      result[slotNum] = val;
+      max = val;
+    }else if (val.compareTo(currMax) > 0) {  // val>=currMin will be false for staring value: val>=NaN
+      result[slotNum] = val;
+      max = val;
+    }
+  }
+}
 
 // have a version that counts the number of times a Slot has been hit?  (for avg... what else?)
 
