@@ -26,7 +26,6 @@ import org.apache.lucene.util.FixedBitSet;
 import org.apache.solr.common.SolrException;
 import org.apache.solr.common.params.SolrParams;
 import org.apache.solr.common.util.NamedList;
-import org.apache.solr.common.util.SimpleOrderedMap;
 import org.apache.solr.core.CoreContainer;
 import org.apache.solr.core.SolrCore;
 import org.apache.solr.handler.component.ResponseBuilder;
@@ -94,14 +93,25 @@ public class JoinJsonQParserPlugin extends QParserPlugin{
             }
             LocalSolrQueryRequest otherReq = new LocalSolrQueryRequest(core, params);
             try {
-              if(queryObject.get("q") == null || ((String)queryObject.get("q")).isEmpty()){
+              if(queryObject.get("q") == null){
                 
               }else{
-                QParser parser = QParser.getParser((String)queryObject.get("q"), "lucene", otherReq);
-                Query q = parser.getQuery();
-                queryObject.put("parsedq", q);
-              }
+                if(queryObject.get("q") instanceof String){
+                  QParser parser = QParser.getParser((String)queryObject.get("q"), "lucene", otherReq);
+                  Query q = parser.getQuery();
+                  List<Query> qList = new ArrayList<Query>();
+                  qList.add(q);
+                  queryObject.put("parsedq", qList);
+                }else if(queryObject.get("q") instanceof List){
+                  List<Query> qList = new ArrayList<Query>();
+                  for(Object qObject : (List<Object>)queryObject.get("q")){
+                    QParser parser = QParser.getParser(String.valueOf(qObject), "lucene", otherReq);
+                    qList.add(parser.getQuery());
+                  }
+                  queryObject.put("parsedq", qList);
+                }
 
+              }
             } finally {
               otherReq.close();
               core.close();
@@ -386,8 +396,15 @@ class JoinJsonQuery extends Query {
         if(op.isEmpty()){
           SolrIndexSearcher searcher = searcherMap.get((String)_queryObject.get("index"));
           if(_queryObject.containsKey("parsedq")){
-            Query parsedq = (Query)_queryObject.get("parsedq");
-            resultDocSet = searcher.getDocSet(parsedq);
+            for(Query parsedq : (List<Query>)_queryObject.get("parsedq")){
+              if(resultDocSet == null){
+                resultDocSet = searcher.getDocSet(parsedq);
+              }else{
+                resultDocSet = resultDocSet.intersection(searcher.getDocSet(parsedq));
+              }
+            }
+//            Query parsedq = (Query)_queryObject.get("parsedq");
+//            resultDocSet = searcher.getDocSet(parsedq);
           }
         }else{
           List<Map<String, Object>> joinQueryList = (List<Map<String, Object>>)_queryObject.get(op);
