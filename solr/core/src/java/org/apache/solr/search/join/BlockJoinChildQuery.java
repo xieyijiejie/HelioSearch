@@ -257,7 +257,8 @@ public class BlockJoinChildQuery extends Query {
     final Query q = parentQuery.rewrite(reader);
     if (parentQuery == q) return this;
 
-    Query rewritten = new BlockJoinChildQuery(parentQuery, parentList, doScores);
+//    Query rewritten = new BlockJoinChildQuery(parentQuery, parentList, doScores);
+    Query rewritten = new BlockJoinChildQuery(q, parentList, doScores);
     rewritten.setBoost(getBoost());
     return rewritten;
   }
