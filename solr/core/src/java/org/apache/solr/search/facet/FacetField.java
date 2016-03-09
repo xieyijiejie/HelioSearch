@@ -57,6 +57,7 @@ public class FacetField extends FacetRequest {
   long offset;
   long limit = 10;
   long mincount = 1;
+  long maxcount = Long.MAX_VALUE;
   boolean missing;
   boolean numBuckets;
   String prefix;
@@ -229,7 +230,7 @@ abstract class FacetFieldProcessorFCBase extends FacetFieldProcessor {
     int off = (int) freq.offset;
     int lim = freq.limit >= 0 ? (int) freq.limit : Integer.MAX_VALUE;
 
-    int maxsize = freq.limit > 0 ? (int) freq.offset + (int) freq.limit : Integer.MAX_VALUE - 1;
+    int maxsize = freq.limit >= 0 ? (int) freq.offset + (int) freq.limit : Integer.MAX_VALUE - 1;
     maxsize = Math.min(maxsize, nTerms);
 
     final int sortMul = freq.sortDirection.getMultiplier();
@@ -258,11 +259,13 @@ abstract class FacetFieldProcessorFCBase extends FacetFieldProcessor {
         }
       } else {
         // queue not full
-        Slot s = new Slot();
-        s.slot = i;
-        queue.add(s);
-        if (queue.size() >= maxsize) {
-          bottom = queue.top();
+        if(maxsize > 0){
+          Slot s = new Slot();
+          s.slot = i;
+          queue.add(s);
+          if (queue.size() >= maxsize) {
+            bottom = queue.top();
+          }
         }
       }
     }

@@ -635,6 +635,7 @@ class FacetFieldParser extends FacetParser<FacetField> {
       facet.filter = (Map<String,String>) m.get("filter");
       facet.limit = getLong(m, "limit", facet.limit);
       facet.mincount = getLong(m, "mincount", facet.mincount);
+      facet.maxcount = getLong(m, "maxcount", facet.maxcount);
       facet.missing = getBoolean(m, "missing", facet.missing);
       facet.numBuckets = getBoolean(m, "numBuckets", facet.numBuckets);
       facet.prefix = getString(m, "prefix", facet.prefix);
