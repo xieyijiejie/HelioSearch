@@ -249,6 +249,9 @@ abstract class FacetFieldProcessorFCBase extends FacetFieldProcessor {
       if (countAcc.getCount(i) < freq.mincount) {
         continue;
       }
+      if (countAcc.getCount(i) > freq.maxcount) {
+        continue;
+      }
 
       numBuckets++;
 

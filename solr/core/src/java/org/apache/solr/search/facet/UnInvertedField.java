@@ -1028,7 +1028,7 @@ public class UnInvertedField extends DocTermOrds {
       }
       TermsEnum te = this.getOrdTermsEnum(searcher.getAtomicReader());
       DocIterator iter = docs.iterator();
-      long s5 = 0L;
+//      long s5 = 0L;
       while (iter.hasNext()) {
         int doc = iter.nextDoc();
 
@@ -1080,7 +1080,7 @@ public class UnInvertedField extends DocTermOrds {
                 long s11 = System.currentTimeMillis();
 //                if(termHash.find(getTermValue(te, tnum)) != -1){
                 if(filterTermsEnum.seekExact(getTermValue(te, tnum)) && termCounts[(int) filterTermsEnum.ord()] > 0){
-                  s5 += (System.currentTimeMillis() - s11);
+//                  s5 += (System.currentTimeMillis() - s11);
 //                if(termSet.contains(getTermValue(te, tnum).utf8ToString())){
                   termStatus[arrIdx] = 1;
                   processor.countAcc.incrementCount(arrIdx, 1);
@@ -1123,7 +1123,7 @@ public class UnInvertedField extends DocTermOrds {
 //                  if(termHash.find(getTermValue(te, tnum)) != -1){
                   long s11 = System.currentTimeMillis();
                   if(filterTermsEnum.seekExact(getTermValue(te, tnum)) && termCounts[(int) filterTermsEnum.ord()] > 0){
-                    s5 += (System.currentTimeMillis() - s11);
+//                    s5 += (System.currentTimeMillis() - s11);
 //                  if(termSet.contains(getTermValue(te, tnum).utf8ToString())){
                     termStatus[arrIdx] = 1;
                     processor.countAcc.incrementCount(arrIdx, 1);
@@ -1144,7 +1144,7 @@ public class UnInvertedField extends DocTermOrds {
           }
         }
       }
-      System.out.println("s5: " + s5);
+//      System.out.println("s5: " + s5);
     }
 
 

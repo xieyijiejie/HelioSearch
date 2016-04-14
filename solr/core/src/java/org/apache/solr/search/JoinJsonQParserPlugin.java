@@ -7,6 +7,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
+import org.apache.commons.lang.time.DateFormatUtils;
 import org.apache.lucene.index.AtomicReaderContext;
 import org.apache.lucene.index.Fields;
 import org.apache.lucene.index.Terms;
@@ -263,79 +264,85 @@ class JoinJsonQuery extends Query {
     
     private int[][] buildJoinResultCache(SolrIndexSearcher fromSearcher, SolrIndexSearcher toSearcher, String fromField, String toField){
       JoinQueryResultKey jqrk = new JoinQueryResultKey(fromSearcher.getCore().getName(), fromField, toField);
-      if(!rb.req.getParams().getBool("refreshCache", false) && toSearcher.joinQueryResultCache.get(jqrk) != null){
-        System.out.println("Cache Hit");
-        return toSearcher.joinQueryResultCache.get(jqrk);
-      }else{
-        System.out.println("Cache Not Hit");
-        int[][] docJoinResult = new int[fromSearcher.maxDoc()][];
-        try {
-          Fields fromFields = fromSearcher.getAtomicReader().fields();
-          Fields toFields = fromSearcher==toSearcher ? fromFields : toSearcher.getAtomicReader().fields();
-          Terms fromTerms = fromFields.terms(fromField);
-          Terms toTerms = toFields.terms(toField);
-          TermsEnum  fromTermsEnum = fromTerms.iterator(null);
-          TermsEnum  toTermsEnum = toTerms.iterator(null);
-          BytesRef term = fromTermsEnum.next();
-          
-          Bits fromLiveDocs = fromSearcher.getAtomicReader().getLiveDocs();
-          Bits toLiveDocs = toSearcher.getAtomicReader().getLiveDocs();
-          
-          SolrIndexSearcher.DocsEnumState fromDeState = null;
-          fromDeState = new SolrIndexSearcher.DocsEnumState();
-          fromDeState.fieldName = fromField;
-          fromDeState.liveDocs = fromLiveDocs;
-          fromDeState.termsEnum = fromTermsEnum;
-          fromDeState.docsEnum = null;
-          
-          SolrIndexSearcher.DocsEnumState toDeState = null;
-          toDeState = new SolrIndexSearcher.DocsEnumState();
-          toDeState.fieldName = toField;
-          toDeState.liveDocs = toLiveDocs;
-          toDeState.termsEnum = toTermsEnum;
-          toDeState.docsEnum = null;
-          while(term != null){           
-            if(toTermsEnum.seekExact(term)){
-              DocSet fromResultDocSet = fromSearcher.getDocSet(fromDeState);
-              DocSet toResultDocSet = toSearcher.getDocSet(toDeState);
-              DocIterator toDocIterator = toResultDocSet.iterator();
-              int toDocArray[] = new int[toResultDocSet.size()];
-              int index = 0;
-              while(toDocIterator.hasNext()){
-                toDocArray[index++] = toDocIterator.nextDoc();
-              }
-              DocIterator fromDocIterator = fromResultDocSet.iterator();
-              int fromDocNumber = 0;
-              while(fromDocIterator.hasNext()){
-                fromDocNumber++;
-                int fromDocID = fromDocIterator.nextDoc();
-                if(docJoinResult[fromDocID] == null){
-                  docJoinResult[fromDocID] = toDocArray;
-                }else{   
-                  HashDocSet tempDocSet = (HashDocSet) (new HashDocSet(toDocArray, 0, toDocArray.length)).union((new HashDocSet(docJoinResult[fromDocID], 0, docJoinResult[fromDocID].length)));
-                  int[] newToDocArray = new int[tempDocSet.size()];
-                  int newindex = 0;
-                  for(DocIterator docIterator = tempDocSet.iterator(); docIterator.hasNext(); newindex++){
-                    newToDocArray[newindex] = docIterator.next();
+      synchronized(toSearcher){
+        System.out.println("===============" + toSearcher + "===============, " + DateFormatUtils.format(System.currentTimeMillis(), "yyyy-MM-dd'T'HH:mm:ssZZ"));
+        if(!rb.req.getParams().getBool("refreshCache", false) && toSearcher.joinQueryResultCache.get(jqrk) != null){
+          System.out.println("Cache Hit - " + jqrk.toString() + ", on " + toSearcher + "@" + toSearcher.hashCode());
+          return toSearcher.joinQueryResultCache.get(jqrk);
+        }else{
+          System.out.println("Cache Not Hit - " + jqrk.toString() + ", on " + toSearcher + "@" + toSearcher.hashCode());
+          long startTime = System.currentTimeMillis();
+          int[][] docJoinResult = new int[fromSearcher.maxDoc()][];
+          try {
+            Fields fromFields = fromSearcher.getAtomicReader().fields();
+            Fields toFields = fromSearcher==toSearcher ? fromFields : toSearcher.getAtomicReader().fields();
+            Terms fromTerms = fromFields.terms(fromField);
+            Terms toTerms = toFields.terms(toField);
+            TermsEnum  fromTermsEnum = fromTerms.iterator(null);
+            TermsEnum  toTermsEnum = toTerms.iterator(null);
+            BytesRef term = fromTermsEnum.next();
+            
+            Bits fromLiveDocs = fromSearcher.getAtomicReader().getLiveDocs();
+            Bits toLiveDocs = toSearcher.getAtomicReader().getLiveDocs();
+            
+            SolrIndexSearcher.DocsEnumState fromDeState = null;
+            fromDeState = new SolrIndexSearcher.DocsEnumState();
+            fromDeState.fieldName = fromField;
+            fromDeState.liveDocs = fromLiveDocs;
+            fromDeState.termsEnum = fromTermsEnum;
+            fromDeState.docsEnum = null;
+            
+            SolrIndexSearcher.DocsEnumState toDeState = null;
+            toDeState = new SolrIndexSearcher.DocsEnumState();
+            toDeState.fieldName = toField;
+            toDeState.liveDocs = toLiveDocs;
+            toDeState.termsEnum = toTermsEnum;
+            toDeState.docsEnum = null;
+            while(term != null){
+              if(toTermsEnum.seekExact(term)){
+                DocSet fromResultDocSet = fromSearcher.getDocSet(fromDeState);
+                DocSet toResultDocSet = toSearcher.getDocSet(toDeState);
+                DocIterator toDocIterator = toResultDocSet.iterator();
+                int toDocArray[] = new int[toResultDocSet.size()];
+                int index = 0;
+                while(toDocIterator.hasNext()){
+                  toDocArray[index++] = toDocIterator.nextDoc();
+                }
+                DocIterator fromDocIterator = fromResultDocSet.iterator();
+//                int fromDocNumber = 0;
+                while(fromDocIterator.hasNext()){
+//                  fromDocNumber++;
+                  int fromDocID = fromDocIterator.nextDoc();
+                  if(docJoinResult[fromDocID] == null){
+                    docJoinResult[fromDocID] = toDocArray;
+                  }else{   
+                    HashDocSet tempDocSet = (HashDocSet) (new HashDocSet(toDocArray, 0, toDocArray.length)).union((new HashDocSet(docJoinResult[fromDocID], 0, docJoinResult[fromDocID].length)));
+                    int[] newToDocArray = new int[tempDocSet.size()];
+                    int newindex = 0;
+                    for(DocIterator docIterator = tempDocSet.iterator(); docIterator.hasNext(); newindex++){
+                      newToDocArray[newindex] = docIterator.next();
+                    }
+                    docJoinResult[fromDocID] = newToDocArray;
                   }
-                  docJoinResult[fromDocID] = newToDocArray;
                 }
               }
+              term = fromTermsEnum.next();
             }
-            term = fromTermsEnum.next();
-          }
-          int totalSize = 0, hitDocSize = 0;;
-          for(int i = 0 ; i < docJoinResult.length ; i++){
-            if(docJoinResult[i] != null){
-              totalSize += docJoinResult[i].length;
-              hitDocSize++;
+            int totalSize = 0, hitDocSize = 0;;
+            for(int i = 0 ; i < docJoinResult.length ; i++){
+              if(docJoinResult[i] != null){
+                totalSize += docJoinResult[i].length;
+                hitDocSize++;
+              }
             }
+            System.out.println("totalSize:" + totalSize + ", hitDocSize:" + hitDocSize + ", " + jqrk.toString() + ", on " + toSearcher + "@" + toSearcher.hashCode());
+          } catch (IOException e) {
+            throw new RuntimeException();
           }
-        } catch (IOException e) {
-          throw new RuntimeException();
+          toSearcher.joinQueryResultCache.put(jqrk, docJoinResult);
+          System.out.println("Build Cache Elapsed Time: " + (System.currentTimeMillis() - startTime) + "ms, " + jqrk.toString() + ", on " + toSearcher + "@" + toSearcher.hashCode());
+          return docJoinResult;
         }
-        toSearcher.joinQueryResultCache.put(jqrk, docJoinResult);
-        return docJoinResult;
       }
     }
     

@@ -146,8 +146,8 @@ public class SolrIndexSearcher extends IndexSearcher implements Closeable,SolrIn
   public final boolean enableLazyFieldLoading;
 
   private final boolean cachingEnabled;
-  private final SolrCache<Query,DocSet> filterCache;
-  private final SolrCache<QueryResultKey,DocList> queryResultCache;
+  public final SolrCache<Query,DocSet> filterCache;
+  public final SolrCache<QueryResultKey,DocList> queryResultCache;
   private final SolrCache<Integer,Document> documentCache;
   private final SolrCache<String,UnInvertedField> fieldValueCache;
   public final SolrCache<JoinQueryResultKey, int[][]> joinQueryResultCache;
@@ -419,6 +419,8 @@ public class SolrIndexSearcher extends IndexSearcher implements Closeable,SolrIn
             for(JoinQueryResultKey key : keySet){
               if(this.core.getName().equals(key.fromIndex)){
                 ((LRUCache)searcher.joinQueryResultCache).map.remove(key);
+                searcher.filterCache.clear();
+                searcher.queryResultCache.clear();
               }
             }
           }else{

@@ -57,4 +57,9 @@ public class JoinQueryResultKey {
 
     return true;
   }
+  
+  @Override
+  public String toString() {
+    return "fromIndex:" + this.fromIndex + ", fromField:" + this.fromField + ", toField:" + this.toField;
+  }
 }
