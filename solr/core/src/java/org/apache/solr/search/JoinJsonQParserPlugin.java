@@ -264,12 +264,18 @@ class JoinJsonQuery extends Query {
     
     private int[][] buildJoinResultCache(SolrIndexSearcher fromSearcher, SolrIndexSearcher toSearcher, String fromField, String toField){
       JoinQueryResultKey jqrk = new JoinQueryResultKey(fromSearcher.getCore().getName(), fromField, toField);
-      synchronized(toSearcher){
-        System.out.println("===============" + toSearcher + "===============, " + DateFormatUtils.format(System.currentTimeMillis(), "yyyy-MM-dd'T'HH:mm:ssZZ"));
-        if(!rb.req.getParams().getBool("refreshCache", false) && toSearcher.joinQueryResultCache.get(jqrk) != null){
-          System.out.println("Cache Hit - " + jqrk.toString() + ", on " + toSearcher + "@" + toSearcher.hashCode());
-          return toSearcher.joinQueryResultCache.get(jqrk);
-        }else{
+      System.out.println("===============" + toSearcher + "===============, " + DateFormatUtils.format(System.currentTimeMillis(), "yyyy-MM-dd'T'HH:mm:ssZZ"));
+      if(!rb.req.getParams().getBool("refreshCache", false) && toSearcher.joinQueryResultCache.get(jqrk) != null){
+        System.out.println("Cache Hit - " + jqrk.toString() + ", on " + toSearcher + "@" + toSearcher.hashCode());
+        return toSearcher.joinQueryResultCache.get(jqrk);
+      }else{
+        System.out.println("Waiting for locker:" + toSearcher + "@" + toSearcher.hashCode() + ", at " + DateFormatUtils.format(System.currentTimeMillis(), "yyyy-MM-dd'T'HH:mm:ssZZ"));
+        synchronized(toSearcher){
+          System.out.println("Got locker:" + toSearcher + "@" + toSearcher.hashCode() + ", at " + DateFormatUtils.format(System.currentTimeMillis(), "yyyy-MM-dd'T'HH:mm:ssZZ"));
+          if(!rb.req.getParams().getBool("refreshCache", false) && toSearcher.joinQueryResultCache.get(jqrk) != null){
+            System.out.println("Cache Hit - " + jqrk.toString() + ", on " + toSearcher + "@" + toSearcher.hashCode());
+            return toSearcher.joinQueryResultCache.get(jqrk);
+          }
           System.out.println("Cache Not Hit - " + jqrk.toString() + ", on " + toSearcher + "@" + toSearcher.hashCode());
           long startTime = System.currentTimeMillis();
           int[][] docJoinResult = new int[fromSearcher.maxDoc()][];
@@ -309,9 +315,9 @@ class JoinJsonQuery extends Query {
                   toDocArray[index++] = toDocIterator.nextDoc();
                 }
                 DocIterator fromDocIterator = fromResultDocSet.iterator();
-//                int fromDocNumber = 0;
+//                  int fromDocNumber = 0;
                 while(fromDocIterator.hasNext()){
-//                  fromDocNumber++;
+//                    fromDocNumber++;
                   int fromDocID = fromDocIterator.nextDoc();
                   if(docJoinResult[fromDocID] == null){
                     docJoinResult[fromDocID] = toDocArray;

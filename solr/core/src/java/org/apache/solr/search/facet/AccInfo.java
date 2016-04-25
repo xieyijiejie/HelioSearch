@@ -150,6 +150,8 @@ public class AccInfo {
         acc = new MaxSlotAcc(slot, simple.getArg(), qContext, numSlots);
       } else if ("sumsq".equals(simple.name())) {
         acc = new SumsqSlotAcc(slot, simple.getArg(), qContext, numSlots);
+      } else if ("sd".equals(simple.name())) {
+        acc = new StandardDeviationSlotAcc(slot, simple.getArg(), qContext, numSlots);
       }
 
     }

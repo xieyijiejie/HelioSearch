@@ -302,6 +302,59 @@ class SumsqSlotAcc extends DoubleFuncSlotAcc {
   }
 }
 
+class StandardDeviationSlotAcc extends DoubleFuncSlotAcc {
+  int g_count = 0;
+  double g_mean = 0;
+  double g_m2 = 0;
+  
+  double[] mean;
+  double[] m2;
+
+  public StandardDeviationSlotAcc(MutableValueInt slot, ValueSource values, QueryContext queryContext, int numSlots) {
+    super(slot, values, queryContext, numSlots);
+    mean = new double[numSlots];
+    m2 = new double[numSlots];
+  }
+
+  public void collect(int doc) {
+    double val = values.doubleVal(doc);
+    
+    g_count++;
+    double g_delta = val - g_mean;
+    g_mean += g_delta / g_count;
+    g_m2 += g_delta * (val - g_mean);
+    
+    
+    int slotNum = slot.value;
+    result[slotNum] += 1;
+    double delta = val - mean[slotNum];
+    mean[slotNum] += delta / result[slotNum];
+    m2[slotNum] += delta * (val - mean[slotNum]);
+  }
+
+  public Comparable getGlobalValue() {
+    if(g_count >= 2)
+      return Math.sqrt(g_m2 / (g_count - 1));
+    return null;
+  }
+  
+  private Double sd(int slot) {
+    if(result[slot] >= 2)
+      return Math.sqrt(m2[slot] / (result[slot] - 1));
+    return null;
+  }
+
+  @Override
+  public int compare(int slotA, int slotB) {
+    return Double.compare(sd(slotA), sd(slotB));
+  }
+
+  @Override
+  public Double getValue() {
+    return sd(slot.value);
+  }
+}
+
 
 
 class MinSlotAcc extends DoubleFuncSlotAcc {

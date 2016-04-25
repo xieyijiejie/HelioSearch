@@ -27,6 +27,7 @@ import org.apache.solr.search.facet.MaxAgg;
 import org.apache.solr.search.facet.MinAgg;
 import org.apache.solr.search.facet.SmaxAgg;
 import org.apache.solr.search.facet.SminAgg;
+import org.apache.solr.search.facet.StandardDeviationAgg;
 import org.apache.solr.search.facet.SumAgg;
 import org.apache.solr.search.facet.SumsqAgg;
 import org.apache.solr.search.facet.UniqueAgg;
@@ -842,6 +843,13 @@ public abstract class ValueSourceParser implements NamedListInitializedPlugin {
       @Override
       public ValueSource parse(FunctionQParser fp) throws SyntaxError {
         return new AvgAgg(fp.parseValueSource());
+      }
+    });
+    
+    addParser("agg_sd", new ValueSourceParser() {
+      @Override
+      public ValueSource parse(FunctionQParser fp) throws SyntaxError {
+        return new StandardDeviationAgg(fp.parseValueSource());
       }
     });
 
