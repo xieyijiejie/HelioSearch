@@ -24,6 +24,7 @@ import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 
+import org.apache.lucene.document.Document;
 import org.apache.lucene.index.AtomicReaderContext;
 import org.apache.lucene.index.DocsEnum;
 import org.apache.lucene.index.Fields;
@@ -33,6 +34,7 @@ import org.apache.lucene.index.Term;
 import org.apache.lucene.index.Terms;
 import org.apache.lucene.index.TermsEnum;
 import org.apache.lucene.search.DocIdSetIterator;
+import org.apache.lucene.search.Query;
 import org.apache.lucene.search.TermQuery;
 import org.apache.lucene.util.BytesRef;
 import org.apache.lucene.util.PriorityQueue;
@@ -40,15 +42,22 @@ import org.apache.lucene.util.StringHelper;
 import org.apache.lucene.util.UnicodeUtil;
 import org.apache.solr.common.SolrException;
 import org.apache.solr.common.util.SimpleOrderedMap;
+import org.apache.solr.core.CoreContainer;
+import org.apache.solr.core.SolrCore;
+import org.apache.solr.request.LocalSolrQueryRequest;
+import org.apache.solr.response.ResponseWriterUtil;
 import org.apache.solr.schema.FieldType;
 import org.apache.solr.schema.SchemaField;
 import org.apache.solr.search.DocIterator;
 import org.apache.solr.search.DocSet;
 import org.apache.solr.search.HashDocSet;
+import org.apache.solr.search.QParser;
 import org.apache.solr.search.SolrIndexSearcher;
 import org.apache.solr.search.SortedIntDocSetNative;
+import org.apache.solr.search.SyntaxError;
 import org.apache.solr.search.field.FieldUtil;
 import org.apache.solr.search.mutable.MutableValueInt;
+import org.apache.solr.util.RefCounted;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -60,6 +69,7 @@ public class FacetField extends FacetRequest {
   long maxcount = Long.MAX_VALUE;
   boolean missing;
   boolean numBuckets;
+  boolean fk = false;
   String prefix;
   String sortVariable;
   SortDirection sortDirection;
@@ -372,6 +382,50 @@ abstract class FacetFieldProcessorFCBase extends FacetFieldProcessor {
         }
       }
     }
+    
+
+    if(freq.fk){
+      String fkCore = (String)sf.getNamedPropertyValues(false).get("fkCore");
+      String fkField = (String)sf.getNamedPropertyValues(false).get("fkField");
+      String fkFilter = (String)sf.getNamedPropertyValues(false).get("fkFilter");
+      
+      if(fkCore != null && fkField != null && !fkCore.isEmpty() && !fkField.isEmpty()){
+        CoreContainer container = this.fcontext.searcher.getCore().getCoreDescriptor().getCoreContainer();
+        final SolrCore core = container.getCore(fkCore);
+        if (core == null) {
+          throw new SolrException(SolrException.ErrorCode.BAD_REQUEST, "Cross-core join: no such core " + fkCore);
+        }
+        RefCounted<SolrIndexSearcher> coreRef = core.getSearcher(false, true, null);
+        try {
+          SolrIndexSearcher fkSearcher = coreRef.get();
+          
+          for(Object o : bucketList){
+            if(o instanceof SimpleOrderedMap){
+              Object val = ((SimpleOrderedMap<Object>)o).get("val");
+              
+              QParser parser = QParser.getParser(fkField + ":" + val + " AND " + fkFilter, "lucene", new LocalSolrQueryRequest(core, this.fcontext.req.getParams()));
+              Query q = parser.getQuery();
+              
+              DocSet ds = fkSearcher.getDocSet(q);
+              DocIterator iter = ds.iterator();
+              while(iter.hasNext()){
+                Integer docID = iter.next();
+                Document fkDoc = fkSearcher.doc(docID);
+                ((SimpleOrderedMap<Object>)o).add("object", ResponseWriterUtil.toSolrDocument(fkDoc, core.getLatestSchema()));
+                break;
+              }
+            }
+          }
+        } catch (SyntaxError e) {
+          throw new RuntimeException();
+        } finally{
+          coreRef.decref();
+          core.close();
+        }
+      }
+    }
+    
+
 
     return res;
   }

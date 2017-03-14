@@ -333,6 +333,11 @@ public final class SchemaField extends FieldProperties {
     SimpleOrderedMap<Object> properties = new SimpleOrderedMap<>();
     properties.add(FIELD_NAME, getName());
     properties.add(TYPE_NAME, getType().getTypeName());
+    
+    properties.add("fkCore", args.get("fkCore"));
+    properties.add("fkField", args.get("fkField"));
+    properties.add("fkFilter", args.get("fkFilter"));
+    
     if (showDefaults) {
       if (null != getDefaultValue()) {
         properties.add(DEFAULT_VALUE, getDefaultValue());

@@ -153,6 +153,12 @@ public class LRUCache<K,V> extends SolrCacheBase implements SolrCache<K,V> {
       map.clear();
     }
   }
+  
+  public void remove(K key){
+    synchronized (map) {
+      map.remove(key);
+    }
+  }
 
   @Override
   public void warm(SolrIndexSearcher.WarmContext warmContext) {

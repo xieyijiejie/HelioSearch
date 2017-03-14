@@ -28,6 +28,7 @@ import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.atomic.AtomicLong;
 
+import org.apache.commons.lang.time.StopWatch;
 import org.apache.lucene.index.AtomicReader;
 import org.apache.lucene.index.AtomicReaderContext;
 import org.apache.lucene.index.DocTermOrds;
@@ -59,7 +60,6 @@ import org.apache.solr.search.BitDocSet;
 import org.apache.solr.search.BitDocSetNative;
 import org.apache.solr.search.DocIterator;
 import org.apache.solr.search.DocSet;
-import org.apache.solr.search.JoinJsonQParserPlugin;
 import org.apache.solr.search.QParser;
 import org.apache.solr.search.QueryContext;
 import org.apache.solr.search.SolrCache;
@@ -1028,7 +1028,13 @@ public class UnInvertedField extends DocTermOrds {
       }
       TermsEnum te = this.getOrdTermsEnum(searcher.getAtomicReader());
       DocIterator iter = docs.iterator();
-//      long s5 = 0L;
+      long s5 = 0L, s6 = 0L, s7 = 0L;
+      StopWatch sw1 = new StopWatch();
+      StopWatch sw2 = new StopWatch();
+      StopWatch sw3 = new StopWatch();
+      StopWatch sw4 = new StopWatch();
+      sw1.start();sw2.start();sw3.start();sw4.start();
+      sw1.suspend();sw2.suspend();sw3.suspend();sw4.suspend();
       while (iter.hasNext()) {
         int doc = iter.nextDoc();
 
@@ -1076,18 +1082,29 @@ public class UnInvertedField extends DocTermOrds {
                 processor.countAcc.incrementCount(arrIdx, 1);
                 processor.collect(arrIdx, segDoc);
               }else if(termStatus[arrIdx] == 0){
+                sw2.resume();
                 //不知道
-                long s11 = System.currentTimeMillis();
+//                long s11 = System.currentTimeMillis();
 //                if(termHash.find(getTermValue(te, tnum)) != -1){
-                if(filterTermsEnum.seekExact(getTermValue(te, tnum)) && termCounts[(int) filterTermsEnum.ord()] > 0){
+                sw1.resume();
+                BytesRef br = getTermValue(te, tnum);
+                sw1.suspend();
+                sw3.resume();
+                if(filterTermsEnum.seekExact(br) && termCounts[(int) filterTermsEnum.ord()] > 0){
+                  sw3.suspend();
 //                  s5 += (System.currentTimeMillis() - s11);
 //                if(termSet.contains(getTermValue(te, tnum).utf8ToString())){
+                  sw4.resume();
                   termStatus[arrIdx] = 1;
                   processor.countAcc.incrementCount(arrIdx, 1);
                   processor.collect(arrIdx, segDoc);
+                  sw4.suspend();
                 }else{
                   termStatus[arrIdx] = -1;
+                  sw3.suspend();
                 }
+                
+                sw2.suspend();
               }else{
                 //不要
               }
@@ -1119,18 +1136,29 @@ public class UnInvertedField extends DocTermOrds {
                   processor.countAcc.incrementCount(arrIdx, 1);
                   processor.collect(arrIdx, segDoc);
                 }else if(termStatus[arrIdx] == 0){
+                  sw2.resume();
                   //不知道
 //                  if(termHash.find(getTermValue(te, tnum)) != -1){
-                  long s11 = System.currentTimeMillis();
-                  if(filterTermsEnum.seekExact(getTermValue(te, tnum)) && termCounts[(int) filterTermsEnum.ord()] > 0){
+//                  long s11 = System.currentTimeMillis();
+                  sw1.resume();
+                  BytesRef br = getTermValue(te, tnum);
+                  sw1.suspend();
+                  sw3.resume();
+                  if(filterTermsEnum.seekExact(br) && termCounts[(int) filterTermsEnum.ord()] > 0){
+                    sw3.suspend();
 //                    s5 += (System.currentTimeMillis() - s11);
 //                  if(termSet.contains(getTermValue(te, tnum).utf8ToString())){
+                    
+                    sw4.resume();
                     termStatus[arrIdx] = 1;
                     processor.countAcc.incrementCount(arrIdx, 1);
                     processor.collect(arrIdx, segDoc);
+                    sw4.suspend();
                   }else{
                     termStatus[arrIdx] = -1;
+                    sw3.suspend();
                   }
+                  sw2.suspend();
                 }else{
                   //不要
                 }
@@ -1145,6 +1173,12 @@ public class UnInvertedField extends DocTermOrds {
         }
       }
 //      System.out.println("s5: " + s5);
+      sw1.resume();sw2.resume();sw3.resume();sw4.resume();
+      sw1.split();sw2.split();sw3.split();sw4.split();
+      System.out.println("sw1" + sw1.toSplitString());
+      System.out.println("sw2" + sw2.toSplitString());
+      System.out.println("sw3" + sw3.toSplitString());
+      System.out.println("sw4" + sw4.toSplitString());
     }
 
 

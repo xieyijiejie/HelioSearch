@@ -34,7 +34,11 @@
     <core schema="schema.xml" loadOnStartup="true" instanceDir="metrix_organization/" transient="false" name="metrix_organization" config="solrconfig.xml" dataDir="data"/>
     <core schema="schema.xml" loadOnStartup="true" instanceDir="metrix_hcp/" transient="false" name="metrix_hcp" config="solrconfig.xml" dataDir="data"/>
     <core schema="schema.xml" loadOnStartup="true" instanceDir="metrix_clinicaltrials/" transient="false" name="metrix_clinicaltrials" config="solrconfig.xml" dataDir="data"/>
+    <core schema="schema.xml" loadOnStartup="true" instanceDir="gbi_drug/" transient="false" name="gbi_drug" config="solrconfig.xml" dataDir="data"/>
+    <core schema="schema.xml" loadOnStartup="true" instanceDir="gbi_drug_pipeline/" transient="false" name="gbi_drug_pipeline" config="solrconfig.xml" dataDir="data"/>
+    <core schema="schema.xml" loadOnStartup="true" instanceDir="gbi_reference/" transient="false" name="gbi_reference" config="solrconfig.xml" dataDir="data"/>
     <!--core schema="schema.xml" loadOnStartup="true" instanceDir="navisus_payment/" transient="false" name="navisus_payment" config="solrconfig.xml" dataDir="data"/-->
   </cores>
 
 </solr>
+

@@ -6,8 +6,10 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.UUID;
 
 import org.apache.commons.lang.time.DateFormatUtils;
+import org.apache.commons.lang.time.StopWatch;
 import org.apache.lucene.index.AtomicReaderContext;
 import org.apache.lucene.index.Fields;
 import org.apache.lucene.index.Terms;
@@ -251,34 +253,54 @@ class JoinJsonQuery extends Query {
     @Override
     public Scorer scorer(AtomicReaderContext context, Bits acceptDocs)
         throws IOException {
+      StopWatch sw1 = new StopWatch();
+      sw1.start();
       if (filter == null) {
         resultSet = getDocSet(joinQueryObject);
         filter = resultSet.getTopFilter();
       }
+      sw1.split();
+      System.out.println("scorer, 1 sw1:"+sw1.toSplitString());
 
       // Although this set only includes live docs, other filters can be pushed down to queries.
+//      StopWatch sw2 = new StopWatch();
+//      sw2.start();
       DocIdSet readerSet = filter.getDocIdSet(context, acceptDocs);
+//      sw2.split();
+//      System.out.println("scorer, 2 sw2:"+sw2.toSplitString());
       return new JoinScorer(this, readerSet == null ? DocIdSetIterator.empty() : readerSet.iterator(), getBoost());
+//      return null;
 
     }
     
     private int[][] buildJoinResultCache(SolrIndexSearcher fromSearcher, SolrIndexSearcher toSearcher, String fromField, String toField){
+      UUID uuid = java.util.UUID.randomUUID();
+      
+      
       JoinQueryResultKey jqrk = new JoinQueryResultKey(fromSearcher.getCore().getName(), fromField, toField);
-      System.out.println("===============" + toSearcher + "===============, " + DateFormatUtils.format(System.currentTimeMillis(), "yyyy-MM-dd'T'HH:mm:ssZZ"));
+      System.out.println(uuid + " ===============" + toSearcher + ", " + jqrk.toString() + "===============, at " + DateFormatUtils.format(System.currentTimeMillis(), "yyyy-MM-dd'T'HH:mm:ss.SSS"));
       if(!rb.req.getParams().getBool("refreshCache", false) && toSearcher.joinQueryResultCache.get(jqrk) != null){
-        System.out.println("Cache Hit - " + jqrk.toString() + ", on " + toSearcher + "@" + toSearcher.hashCode());
+        System.out.println(uuid + " Cache Hit - " + jqrk.toString() + ", on " + toSearcher + "@" + toSearcher.hashCode() + ", at " + DateFormatUtils.format(System.currentTimeMillis(), "yyyy-MM-dd'T'HH:mm:ss.SSS"));
         return toSearcher.joinQueryResultCache.get(jqrk);
       }else{
-        System.out.println("Waiting for locker:" + toSearcher + "@" + toSearcher.hashCode() + ", at " + DateFormatUtils.format(System.currentTimeMillis(), "yyyy-MM-dd'T'HH:mm:ssZZ"));
+        System.out.println(uuid + " Waiting for locker:" + toSearcher + "@" + toSearcher.hashCode() + ", at " + DateFormatUtils.format(System.currentTimeMillis(), "yyyy-MM-dd'T'HH:mm:ss.SSS"));
         synchronized(toSearcher){
-          System.out.println("Got locker:" + toSearcher + "@" + toSearcher.hashCode() + ", at " + DateFormatUtils.format(System.currentTimeMillis(), "yyyy-MM-dd'T'HH:mm:ssZZ"));
+          System.out.println(uuid + " Got locker:" + toSearcher + "@" + toSearcher.hashCode() + ", at " + DateFormatUtils.format(System.currentTimeMillis(), "yyyy-MM-dd'T'HH:mm:ss.SSS"));
           if(!rb.req.getParams().getBool("refreshCache", false) && toSearcher.joinQueryResultCache.get(jqrk) != null){
-            System.out.println("Cache Hit - " + jqrk.toString() + ", on " + toSearcher + "@" + toSearcher.hashCode());
+            System.out.println(uuid + " Cache Hit - " + jqrk.toString() + ", on " + toSearcher + "@" + toSearcher.hashCode() + ", at " + DateFormatUtils.format(System.currentTimeMillis(), "yyyy-MM-dd'T'HH:mm:ss.SSS"));
             return toSearcher.joinQueryResultCache.get(jqrk);
           }
-          System.out.println("Cache Not Hit - " + jqrk.toString() + ", on " + toSearcher + "@" + toSearcher.hashCode());
+          System.out.println(uuid + " Cache Not Hit - " + jqrk.toString() + ", on " + toSearcher + "@" + toSearcher.hashCode() + ", at " + DateFormatUtils.format(System.currentTimeMillis(), "yyyy-MM-dd'T'HH:mm:ss.SSS"));
           long startTime = System.currentTimeMillis();
           int[][] docJoinResult = new int[fromSearcher.maxDoc()][];
+          StopWatch sw1 = new StopWatch();
+          StopWatch sw2 = new StopWatch();
+          StopWatch sw3 = new StopWatch();
+          StopWatch sw4 = new StopWatch();
+          StopWatch sw5 = new StopWatch();
+          StopWatch sw6 = new StopWatch();
+          StopWatch sw7 = new StopWatch();
+          sw1.start();
           try {
             Fields fromFields = fromSearcher.getAtomicReader().fields();
             Fields toFields = fromSearcher==toSearcher ? fromFields : toSearcher.getAtomicReader().fields();
@@ -304,36 +326,57 @@ class JoinJsonQuery extends Query {
             toDeState.liveDocs = toLiveDocs;
             toDeState.termsEnum = toTermsEnum;
             toDeState.docsEnum = null;
+            
+            sw2.start();sw3.start();sw4.start();sw5.start();sw6.start();sw7.start();
+            sw3.suspend();sw4.suspend();sw5.suspend();sw6.suspend();sw7.suspend();
+            int progress = 0;
             while(term != null){
+              if((progress++) % 10000 == 0){
+                System.out.println("Progress: " + progress);
+              }
               if(toTermsEnum.seekExact(term)){
+
                 DocSet fromResultDocSet = fromSearcher.getDocSet(fromDeState);
+                sw7.resume();
                 DocSet toResultDocSet = toSearcher.getDocSet(toDeState);
+                sw7.suspend();
+                
                 DocIterator toDocIterator = toResultDocSet.iterator();
                 int toDocArray[] = new int[toResultDocSet.size()];
                 int index = 0;
+                sw5.resume();
                 while(toDocIterator.hasNext()){
                   toDocArray[index++] = toDocIterator.nextDoc();
                 }
+                sw5.suspend();
                 DocIterator fromDocIterator = fromResultDocSet.iterator();
 //                  int fromDocNumber = 0;
+                sw3.resume();
                 while(fromDocIterator.hasNext()){
 //                    fromDocNumber++;
                   int fromDocID = fromDocIterator.nextDoc();
                   if(docJoinResult[fromDocID] == null){
                     docJoinResult[fromDocID] = toDocArray;
                   }else{   
+                    sw6.resume();
                     HashDocSet tempDocSet = (HashDocSet) (new HashDocSet(toDocArray, 0, toDocArray.length)).union((new HashDocSet(docJoinResult[fromDocID], 0, docJoinResult[fromDocID].length)));
                     int[] newToDocArray = new int[tempDocSet.size()];
+                    sw6.suspend();
                     int newindex = 0;
+                    sw4.resume();
                     for(DocIterator docIterator = tempDocSet.iterator(); docIterator.hasNext(); newindex++){
                       newToDocArray[newindex] = docIterator.next();
                     }
+                    sw4.suspend();
                     docJoinResult[fromDocID] = newToDocArray;
                   }
                 }
+                sw3.suspend();
               }
               term = fromTermsEnum.next();
             }
+            sw3.resume();sw4.resume();sw5.resume();sw6.resume();sw7.resume();
+            sw2.split();sw3.split();sw4.split();sw5.split();sw6.split();sw7.split();
             int totalSize = 0, hitDocSize = 0;;
             for(int i = 0 ; i < docJoinResult.length ; i++){
               if(docJoinResult[i] != null){
@@ -341,12 +384,14 @@ class JoinJsonQuery extends Query {
                 hitDocSize++;
               }
             }
-            System.out.println("totalSize:" + totalSize + ", hitDocSize:" + hitDocSize + ", " + jqrk.toString() + ", on " + toSearcher + "@" + toSearcher.hashCode());
+            System.out.println(uuid + " totalSize:" + totalSize + ", hitDocSize:" + hitDocSize + ", " + jqrk.toString() + ", on " + toSearcher + "@" + toSearcher.hashCode() + ", at " + DateFormatUtils.format(System.currentTimeMillis(), "yyyy-MM-dd'T'HH:mm:ss.SSS"));
           } catch (IOException e) {
             throw new RuntimeException();
           }
+          sw1.split();
           toSearcher.joinQueryResultCache.put(jqrk, docJoinResult);
-          System.out.println("Build Cache Elapsed Time: " + (System.currentTimeMillis() - startTime) + "ms, " + jqrk.toString() + ", on " + toSearcher + "@" + toSearcher.hashCode());
+          System.out.println(uuid + " Build Cache Elapsed Time: " + (System.currentTimeMillis() - startTime) + "ms, " + jqrk.toString() + ", on " + toSearcher + "@" + toSearcher.hashCode() + ", at " + DateFormatUtils.format(System.currentTimeMillis(), "yyyy-MM-dd'T'HH:mm:ss.SSS"));
+          System.out.println(uuid + " sw1:"+sw1.toSplitString() + " sw2:"+sw2.toSplitString() + " sw3:"+sw3.toSplitString() + " sw4:"+sw4.toSplitString() + " sw5:"+sw5.toSplitString() + " sw6:"+sw6.toSplitString() + " sw7:"+sw7.toSplitString());
           return docJoinResult;
         }
       }
@@ -382,15 +427,29 @@ class JoinJsonQuery extends Query {
         String[] onArray = ((String)_joinQueryObject.get("on")).split("\\-\\>");
         String fromField = onArray[0];
         String toField = onArray[1];
+        StopWatch sw1 = new StopWatch();
+        sw1.start();
         resultDocSet = getDocSetNewWithCache(fromSearcher, toSearcher, fromField, toField, fromDocSet);
+        sw1.split();
         
+        StopWatch sw2 = new StopWatch();
+        sw2.start();
         DocSet toDocSet = getDocSet((Map<String, Object>)_joinQueryObject.get("to"));
+        sw2.split();
+        
+        StopWatch sw3 = new StopWatch();
+        sw3.start();
         if(toDocSet != null){
           DocSet tempDocSet = resultDocSet.intersection(toDocSet);
           resultDocSet.decref();
           toDocSet.decref();
           resultDocSet = tempDocSet;
         }
+        sw3.split();
+
+        System.out.println("getDocSet -- " + " sw1:"+sw1.toSplitString());
+        System.out.println("getDocSet -- " + " sw2:"+sw2.toSplitString());
+        System.out.println("getDocSet -- " + " sw3:"+sw3.toSplitString());
       }else if(_queryObject.containsKey("$not")){
         DocSet toDocSet = getDocSet((Map<String, Object>)_queryObject.get("$not"));
         String index = getLastIndexName((Map<String, Object>)_queryObject.get("$not"));

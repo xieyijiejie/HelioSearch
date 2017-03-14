@@ -28,13 +28,17 @@ import java.util.Comparator;
 import java.util.Date;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.Iterator;
 import java.util.LinkedList;
 import java.util.List;
 import java.util.Map;
+import java.util.Map.Entry;
 import java.util.Set;
+import java.util.Stack;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicLong;
 
+import org.apache.commons.lang.time.StopWatch;
 import org.apache.lucene.document.Document;
 import org.apache.lucene.document.DoubleField;
 import org.apache.lucene.document.Field;
@@ -121,6 +125,7 @@ import org.slf4j.LoggerFactory;
  * @since solr 0.9
  */
 public class SolrIndexSearcher extends IndexSearcher implements Closeable,SolrInfoMBean {
+  
 
   // These should *only* be used for debugging or monitoring purposes
   public static final AtomicLong numOpens = new AtomicLong();
@@ -415,18 +420,67 @@ public class SolrIndexSearcher extends IndexSearcher implements Closeable,SolrIn
         SolrIndexSearcher searcher = coreRef.get();
         if(searcher.joinQueryResultCache != null){
           if(searcher.joinQueryResultCache instanceof LRUCache){
-            Set<JoinQueryResultKey> keySet = (Set<JoinQueryResultKey>)((LRUCache)searcher.joinQueryResultCache).map.keySet();
-            for(JoinQueryResultKey key : keySet){
-              if(this.core.getName().equals(key.fromIndex)){
-                ((LRUCache)searcher.joinQueryResultCache).map.remove(key);
-                searcher.filterCache.clear();
-                searcher.queryResultCache.clear();
+            Iterator<Entry<JoinQueryResultKey, int[][]>> iter = ((LRUCache)searcher.joinQueryResultCache).map.entrySet().iterator();
+            while(iter.hasNext()){
+              Entry<JoinQueryResultKey, int[][]> entry = iter.next();
+              if(this.core.getName().equals(entry.getKey().fromIndex)){
+                iter.remove();
               }
             }
+//            Set<JoinQueryResultKey> keySet = (Set<JoinQueryResultKey>)((LRUCache)searcher.joinQueryResultCache).map.keySet();
+//            for(JoinQueryResultKey key : keySet){
+//              if(this.core.getName().equals(key.fromIndex)){
+//                ((LRUCache)searcher.joinQueryResultCache).map.remove(key);
+//
+//              }
+//            }
           }else{
             throw new RuntimeException("Only Support LRUCache");
           }
         }
+        
+        if(searcher.queryResultCache != null){
+          if(searcher.queryResultCache instanceof LRUCache){
+            synchronized(searcher.queryResultCache){
+              List<QueryResultKey> expiredCacheKey = new LinkedList<QueryResultKey>();
+              Iterator<Entry<QueryResultKey, DocList>> iter = ((LRUCache<QueryResultKey,DocList>)searcher.queryResultCache).map.entrySet().iterator();
+              while(iter.hasNext()){
+                Stack<Map<String, Object>> stack = new Stack<Map<String, Object>>();
+                Entry<QueryResultKey, DocList> cacheEntry = iter.next();
+                QueryResultKey qrk = cacheEntry.getKey();
+                if(qrk.query instanceof JoinJsonQuery){
+                  stack.push(((JoinJsonQuery)qrk.query).joinQueryObject);
+                  while(!stack.isEmpty()){
+                    for(Entry<String, Object> subEntry : stack.pop().entrySet()){
+                      if(subEntry.getValue() instanceof Map){
+                        stack.push((Map<String,Object>) subEntry.getValue());
+                      }else if(subEntry.getValue() instanceof List
+                          && !((List)subEntry.getValue()).isEmpty()
+                          && ((List)subEntry.getValue()).get(0) instanceof Map){
+                        stack.addAll((List<Map<String,Object>>) subEntry.getValue());
+                      }else{
+                        if(subEntry.getKey().equals("index")){
+                          if(((String)subEntry.getValue()).equals(this.core.getName())){
+//                            iter.remove();
+                            expiredCacheKey.add(qrk);
+                            stack.clear();
+                            break;
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+              for(QueryResultKey qrk : expiredCacheKey){
+                ((LRUCache<QueryResultKey,DocList>)searcher.queryResultCache).remove(qrk);
+              }
+            }
+          }
+        }
+
+      }catch(Exception e){
+        e.printStackTrace();
       }finally{
         if(coreRef != null)coreRef.decref();
       }
@@ -1310,9 +1364,10 @@ public class SolrIndexSearcher extends IndexSearcher implements Closeable,SolrIn
       result.incref();  // one for the cache
       filterCache.put(key, result);
     }
-
+    
     return result;
   }
+  
 
   // query must be positive
   DocSet getDocSetNC(Query query, DocSet filter) throws IOException {
@@ -1715,6 +1770,11 @@ public class SolrIndexSearcher extends IndexSearcher implements Closeable,SolrIn
     if(q instanceof RankQuery) {
       RankQuery rq = (RankQuery)q;
       return rq.getTopDocsCollector(len, cmd, this);
+    }
+    if(q instanceof WrappedQuery){
+      if(((WrappedQuery)q).getWrappedQuery() instanceof JoinJsonQuery){
+        return TopScoreDocCollector.create(len, false);
+      }
     }
 
     if (null == cmd.getSort()) {

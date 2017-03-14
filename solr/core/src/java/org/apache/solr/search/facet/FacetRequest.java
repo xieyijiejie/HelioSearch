@@ -129,6 +129,8 @@ class FacetProcessor<FacetRequestT extends FacetRequest> {
         this.response.add(this.sub.getKey(), subProcessor.getResponse());
       } catch (IOException e) {
         throw new RuntimeException();
+      } finally {
+        SolrRequestInfo.clearRequestInfoWithoutClose();
       }
     }
     
@@ -636,6 +638,7 @@ class FacetFieldParser extends FacetParser<FacetField> {
       facet.limit = getLong(m, "limit", facet.limit);
       facet.mincount = getLong(m, "mincount", facet.mincount);
       facet.maxcount = getLong(m, "maxcount", facet.maxcount);
+      facet.fk = getBoolean(m, "fk", facet.fk);
       facet.missing = getBoolean(m, "missing", facet.missing);
       facet.numBuckets = getBoolean(m, "numBuckets", facet.numBuckets);
       facet.prefix = getString(m, "prefix", facet.prefix);

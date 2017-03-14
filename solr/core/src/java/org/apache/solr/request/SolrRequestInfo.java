@@ -58,6 +58,11 @@ public class SolrRequestInfo {
 
     threadLocal.set(info);
   }
+  
+  //仅仅用于多线程做Facet时候，规避setRequestInfo中的非null判断。其他地方慎用！！！
+  public static void clearRequestInfoWithoutClose(){
+    threadLocal.remove();
+  }
 
   public static void clearRequestInfo() {
     try {

@@ -615,10 +615,16 @@ public class IndexSearcher {
         // continue with the following leaf
         continue;
       }
+      long startTime1 = System.currentTimeMillis();
       BulkScorer scorer = weight.bulkScorer(ctx, !collector.acceptsDocsOutOfOrder(), ctx.reader().getLiveDocs());
+      System.out.println("search, bulkScorer -- " + " sw1:"+(System.currentTimeMillis() - startTime1));
       if (scorer != null) {
         try {
+          long startTime2 = System.currentTimeMillis();
           scorer.score(collector);
+          System.out.println("search, score -- " + " sw2:"+(System.currentTimeMillis() - startTime2));
+          System.out.println("search, score -- " + weight.getClass() + ", " + weight.toString() + ", " + scorer.getClass() + ", " + scorer.toString()
+              + ", " + collector.getClass() + ", " + collector.toString());
         } catch (CollectionTerminatedException e) {
           // collection was terminated prematurely
           // continue with the following leaf

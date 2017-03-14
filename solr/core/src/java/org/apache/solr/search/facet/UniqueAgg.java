@@ -30,8 +30,8 @@ public class UniqueAgg extends StrAggValueSource {
 
   @Override
   public SlotAcc createSlotAcc(FacetContext fcontext, MutableValueInt slot, int numDocs, int numSlots) throws IOException {
-    return new UniqueSinglevaluedSlotAcc(slot, fcontext.qcontext, getArg(), numSlots);
+//    return new UniqueSinglevaluedSlotAcc(slot, fcontext.qcontext, getArg(), numSlots);
     // TODO: handle multiValued?
-    // return new UniqueMultivaluedSlotAcc(slot, getArg(), qContext, numSlots);
+    return new UniqueMultivaluedSlotAcc(slot, fcontext.qcontext, getArg(), numSlots);
   }
 }

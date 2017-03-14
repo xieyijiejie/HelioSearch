@@ -516,6 +516,7 @@ public class ConcurrentLRUCache<K,V> {
       }
 
       map.clear();
+      stats.reset();
 
     } finally {
       markAndSweepLock.unlock();
@@ -602,6 +603,10 @@ public class ConcurrentLRUCache<K,V> {
             missCounter = new AtomicLong();
     private final AtomicInteger size = new AtomicInteger();
     private AtomicLong evictionCounter = new AtomicLong();
+    
+    public void reset(){
+      this.size.set(0);
+    }
 
     public long getCumulativeLookups() {
       return (accessCounter.get() - putCounter.get() - nonLivePutCounter.get()) + missCounter.get();

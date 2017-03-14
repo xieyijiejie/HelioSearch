@@ -62,6 +62,7 @@ public abstract class FieldProperties {
           "multiValued",
           "sortMissingFirst","sortMissingLast","required", "omitPositions",
           "storeOffsetsWithPositions", "docValues", "luceneFieldCache", "cacheTop"
+          , "fk", "fkCore", "fkField", "fkFilter"
   };
 
   static final Map<String,Integer> propertyMap = new HashMap<>();
