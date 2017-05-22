@@ -29,14 +29,14 @@ public class StartSolrJetty
 {
   public static void main( String[] args ) 
   {
-    //System.setProperty("solr.solr.home", "../../../example/solr");
+    System.setProperty("solr.solr.home", "solr/example/solr");
 
     Server server = new Server();
     SocketConnector connector = new SocketConnector();
     // Set some timeout options to make debugging easier.
     connector.setMaxIdleTime(1000 * 60 * 60);
     connector.setSoLingerTime(-1);
-    connector.setPort(8983);
+    connector.setPort(18085);
     server.setConnectors(new Connector[] { connector });
     
     WebAppContext bb = new WebAppContext();
