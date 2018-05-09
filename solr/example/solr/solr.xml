@@ -27,8 +27,12 @@
 -->
 
 <solr>
-    <cores defaultCoreName="metrix_papers" adminPath="/admin/cores" hostPort="8983" hostContext="solr">
+    <cores defaultCoreName="collection1" adminPath="/admin/cores" hostPort="8983" hostContext="solr">
         <core loadOnStartup="true" instanceDir="collection1/" transient="false" name="collection1"/>
+        <core loadOnStartup="true" instanceDir="gbi_clinicaltrial/" transient="false" name="gbi_clinicaltrial"/>
+        <core loadOnStartup="true" instanceDir="gbi_rel_clinicaltrial/" transient="false" name="gbi_rel_clinicaltrial"/>
+        <core loadOnStartup="true" instanceDir="gbi_hcp/" transient="false" name="gbi_hcp"/>
+        <core loadOnStartup="true" instanceDir="gbi_organization/" transient="false" name="gbi_organization"/>
     </cores>
 </solr>
 

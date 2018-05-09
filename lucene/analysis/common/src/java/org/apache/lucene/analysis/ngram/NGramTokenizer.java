@@ -60,6 +60,7 @@ import org.apache.lucene.util.Version;
 public class NGramTokenizer extends Tokenizer {
   public static final int DEFAULT_MIN_NGRAM_SIZE = 1;
   public static final int DEFAULT_MAX_NGRAM_SIZE = 2;
+  public static final int DEFAULT_INDEX_LENGTH = 1024;
 
   private CharacterUtils charUtils;
   private CharacterUtils.CharacterBuffer charBuffer;
@@ -67,7 +68,7 @@ public class NGramTokenizer extends Tokenizer {
   private int bufferStart, bufferEnd; // remaining slice in buffer
   private int offset;
   private int gramSize;
-  private int minGram, maxGram;
+  private int minGram, maxGram, indexLength;
   private boolean exhausted;
   private int lastCheckedChar; // last offset in the buffer that we checked
   private int lastNonTokenChar; // last offset that we found to not be a token char
@@ -78,9 +79,9 @@ public class NGramTokenizer extends Tokenizer {
   private final PositionLengthAttribute posLenAtt = addAttribute(PositionLengthAttribute.class);
   private final OffsetAttribute offsetAtt = addAttribute(OffsetAttribute.class);
 
-  NGramTokenizer(Version version, Reader input, int minGram, int maxGram, boolean edgesOnly) {
+  NGramTokenizer(Version version, Reader input, int minGram, int maxGram, int indexLength, boolean edgesOnly) {
     super(input);
-    init(version, minGram, maxGram, edgesOnly);
+    init(version, minGram, maxGram, indexLength, edgesOnly);
   }
 
   /**
@@ -89,21 +90,21 @@ public class NGramTokenizer extends Tokenizer {
    * @param minGram the smallest n-gram to generate
    * @param maxGram the largest n-gram to generate
    */
-  public NGramTokenizer(Reader input, int minGram, int maxGram) {
-    this(Version.LATEST, input, minGram, maxGram, false);
+  public NGramTokenizer(Reader input, int minGram, int maxGram, int indexLength) {
+    this(Version.LATEST, input, minGram, maxGram, indexLength, false);
   }
 
   /**
    * @deprecated For {@link Version#LUCENE_4_3_0} and before, use {@link org.apache.lucene.analysis.ngram.Lucene43NGramTokenizer}, otherwise use {@link #NGramTokenizer(Reader, int, int)}
    */
   @Deprecated
-  public NGramTokenizer(Version version, Reader input, int minGram, int maxGram) {
-    this(version, input, minGram, maxGram, false);
+  public NGramTokenizer(Version version, Reader input, int minGram, int maxGram, int indexLength) {
+    this(version, input, minGram, maxGram, indexLength, false);
   }
 
-  NGramTokenizer(Version version, AttributeFactory factory, Reader input, int minGram, int maxGram, boolean edgesOnly) {
+  NGramTokenizer(Version version, AttributeFactory factory, Reader input, int minGram, int maxGram, int indexLength, boolean edgesOnly) {
     super(factory, input);
-    init(version, minGram, maxGram, edgesOnly);
+    init(version, minGram, maxGram, indexLength, edgesOnly);
   }
 
   /**
@@ -113,16 +114,16 @@ public class NGramTokenizer extends Tokenizer {
    * @param minGram the smallest n-gram to generate
    * @param maxGram the largest n-gram to generate
    */
-  public NGramTokenizer(AttributeFactory factory, Reader input, int minGram, int maxGram) {
-    this(Version.LATEST, factory, input, minGram, maxGram, false);
+  public NGramTokenizer(AttributeFactory factory, Reader input, int minGram, int maxGram, int indexLength) {
+    this(Version.LATEST, factory, input, minGram, maxGram, indexLength,false);
   }
 
   /**
    * @deprecated For {@link Version#LUCENE_4_3_0} and before, use {@link org.apache.lucene.analysis.ngram.Lucene43NGramTokenizer}, otherwise use {@link #NGramTokenizer(AttributeFactory, Reader, int, int)}
    */
   @Deprecated
-  public NGramTokenizer(Version version, AttributeFactory factory, Reader input, int minGram, int maxGram) {
-    this(version, factory, input, minGram, maxGram, false);
+  public NGramTokenizer(Version version, AttributeFactory factory, Reader input, int minGram, int indexLength, int maxGram) {
+    this(version, factory, input, minGram, maxGram, indexLength, false);
   }
 
   /**
@@ -130,10 +131,10 @@ public class NGramTokenizer extends Tokenizer {
    * @param input {@link Reader} holding the input to be tokenized
    */
   public NGramTokenizer(Version version, Reader input) {
-    this(version, input, DEFAULT_MIN_NGRAM_SIZE, DEFAULT_MAX_NGRAM_SIZE);
+    this(version, input, DEFAULT_MIN_NGRAM_SIZE, DEFAULT_MAX_NGRAM_SIZE, DEFAULT_INDEX_LENGTH);
   }
 
-  private void init(Version version, int minGram, int maxGram, boolean edgesOnly) {
+  private void init(Version version, int minGram, int maxGram, int indexLength,  boolean edgesOnly) {
     if (!version.onOrAfter(Version.LUCENE_4_4_0)) {
       throw new IllegalArgumentException("This class only works with Lucene 4.4+. To emulate the old (broken) behavior of NGramTokenizer, use Lucene43NGramTokenizer/Lucene43EdgeNGramTokenizer");
     }
@@ -145,6 +146,9 @@ public class NGramTokenizer extends Tokenizer {
     }
     if (minGram > maxGram) {
       throw new IllegalArgumentException("minGram must not be greater than maxGram");
+    }
+    if (indexLength < 1) {
+      throw new IllegalArgumentException("indexLength must be greater than 0");
     }
     this.minGram = minGram;
     this.maxGram = maxGram;

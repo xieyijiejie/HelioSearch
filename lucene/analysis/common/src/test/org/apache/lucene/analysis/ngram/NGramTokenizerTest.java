@@ -52,7 +52,7 @@ public class NGramTokenizerTest extends BaseTokenStreamTestCase {
   public void testInvalidInput() throws Exception {
     boolean gotException = false;
     try {
-      NGramTokenizer tok = new NGramTokenizer(input, 2, 1);
+      NGramTokenizer tok = new NGramTokenizer(input, 2, 1, 1024);
     } catch (IllegalArgumentException e) {
       gotException = true;
     }
@@ -62,7 +62,7 @@ public class NGramTokenizerTest extends BaseTokenStreamTestCase {
   public void testInvalidInput2() throws Exception {
     boolean gotException = false;
     try {
-      NGramTokenizer tok = new NGramTokenizer(input, 0, 1);
+      NGramTokenizer tok = new NGramTokenizer(input, 0, 1, 1024);
     } catch (IllegalArgumentException e) {
       gotException = true;
     }
@@ -70,17 +70,17 @@ public class NGramTokenizerTest extends BaseTokenStreamTestCase {
   }
   
   public void testUnigrams() throws Exception {
-    NGramTokenizer tokenizer = new NGramTokenizer(input, 1, 1);
+    NGramTokenizer tokenizer = new NGramTokenizer(input, 1, 1, 1024);
     assertTokenStreamContents(tokenizer, new String[]{"a","b","c","d","e"}, new int[]{0,1,2,3,4}, new int[]{1,2,3,4,5}, 5 /* abcde */);
   }
   
   public void testBigrams() throws Exception {
-    NGramTokenizer tokenizer = new NGramTokenizer(input, 2, 2);
+    NGramTokenizer tokenizer = new NGramTokenizer(input, 2, 2, 1024);
     assertTokenStreamContents(tokenizer, new String[]{"ab","bc","cd","de"}, new int[]{0,1,2,3}, new int[]{2,3,4,5}, 5 /* abcde */);
   }
   
   public void testNgrams() throws Exception {
-    NGramTokenizer tokenizer = new NGramTokenizer(input, 1, 3);
+    NGramTokenizer tokenizer = new NGramTokenizer(input, 1, 3,1024);
     assertTokenStreamContents(tokenizer,
         new String[]{"a","ab", "abc", "b", "bc", "bcd", "c", "cd", "cde", "d", "de", "e"},
         new int[]{0,0,0,1,1,1,2,2,2,3,3,4},
@@ -94,12 +94,12 @@ public class NGramTokenizerTest extends BaseTokenStreamTestCase {
   }
   
   public void testOversizedNgrams() throws Exception {
-    NGramTokenizer tokenizer = new NGramTokenizer(input, 6, 7);
+    NGramTokenizer tokenizer = new NGramTokenizer(input, 6, 7, 1024);
     assertTokenStreamContents(tokenizer, new String[0], new int[0], new int[0], 5 /* abcde */);
   }
   
   public void testReset() throws Exception {
-    NGramTokenizer tokenizer = new NGramTokenizer(input, 1, 1);
+    NGramTokenizer tokenizer = new NGramTokenizer(input, 1, 1, 1024);
     assertTokenStreamContents(tokenizer, new String[]{"a","b","c","d","e"}, new int[]{0,1,2,3,4}, new int[]{1,2,3,4,5}, 5 /* abcde */);
     tokenizer.setReader(new StringReader("abcde"));
     assertTokenStreamContents(tokenizer, new String[]{"a","b","c","d","e"}, new int[]{0,1,2,3,4}, new int[]{1,2,3,4,5}, 5 /* abcde */);
@@ -113,7 +113,7 @@ public class NGramTokenizerTest extends BaseTokenStreamTestCase {
       Analyzer a = new Analyzer() {
         @Override
         protected TokenStreamComponents createComponents(String fieldName, Reader reader) {
-          Tokenizer tokenizer = new NGramTokenizer(reader, min, max);
+          Tokenizer tokenizer = new NGramTokenizer(reader, min, max, 1024);
           return new TokenStreamComponents(tokenizer, tokenizer);
         }    
       };
@@ -158,7 +158,7 @@ public class NGramTokenizerTest extends BaseTokenStreamTestCase {
     for (int i = 0; i < codePoints.length; ++i) {
       offsets[i+1] = offsets[i] + Character.charCount(codePoints[i]);
     }
-    final TokenStream grams = new NGramTokenizer(Version.LATEST, new StringReader(s), minGram, maxGram, edgesOnly) {
+    final TokenStream grams = new NGramTokenizer(Version.LATEST, new StringReader(s), minGram, maxGram, 1024, edgesOnly) {
       @Override
       protected boolean isTokenChar(int chr) {
         return nonTokenChars.indexOf(chr) < 0;
@@ -244,7 +244,7 @@ public class NGramTokenizerTest extends BaseTokenStreamTestCase {
 
   public void test43Tokenizer() {
     // TODO: do more than instantiate (ie check the old broken behavior)
-    new Lucene43NGramTokenizer(input, 1, 1);
+    new Lucene43NGramTokenizer(input, 1, 1, 1024);
   }
 
 }

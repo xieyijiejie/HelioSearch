@@ -37,6 +37,7 @@ import org.apache.lucene.util.Version;
 public class EdgeNGramTokenizerFactory extends TokenizerFactory {
   private final int maxGramSize;
   private final int minGramSize;
+  private final int indexLength;
   private final String side;
 
   /** Creates a new EdgeNGramTokenizerFactory */
@@ -44,6 +45,7 @@ public class EdgeNGramTokenizerFactory extends TokenizerFactory {
     super(args);
     minGramSize = getInt(args, "minGramSize", EdgeNGramTokenizer.DEFAULT_MIN_GRAM_SIZE);
     maxGramSize = getInt(args, "maxGramSize", EdgeNGramTokenizer.DEFAULT_MAX_GRAM_SIZE);
+    indexLength = getInt(args, "indexLength", EdgeNGramTokenizer.DEFAULT_INDEX_LENGTH);
     side = get(args, "side", EdgeNGramTokenFilter.Side.FRONT.getLabel());
     if (!args.isEmpty()) {
       throw new IllegalArgumentException("Unknown parameters: " + args);
@@ -56,7 +58,7 @@ public class EdgeNGramTokenizerFactory extends TokenizerFactory {
       if (!EdgeNGramTokenFilter.Side.FRONT.getLabel().equals(side)) {
         throw new IllegalArgumentException(EdgeNGramTokenizer.class.getSimpleName() + " does not support backward n-grams as of Lucene 4.4");
       }
-      return new EdgeNGramTokenizer(input, minGramSize, maxGramSize);
+      return new EdgeNGramTokenizer(input, minGramSize, maxGramSize, indexLength);
     } else {
       return new Lucene43EdgeNGramTokenizer(luceneMatchVersion, input, side, minGramSize, maxGramSize);
     }

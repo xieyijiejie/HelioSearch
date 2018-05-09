@@ -38,12 +38,14 @@ import java.util.Map;
 public class NGramTokenizerFactory extends TokenizerFactory {
   private final int maxGramSize;
   private final int minGramSize;
+  private final int indexLength;
 
   /** Creates a new NGramTokenizerFactory */
   public NGramTokenizerFactory(Map<String, String> args) {
     super(args);
     minGramSize = getInt(args, "minGramSize", NGramTokenizer.DEFAULT_MIN_NGRAM_SIZE);
     maxGramSize = getInt(args, "maxGramSize", NGramTokenizer.DEFAULT_MAX_NGRAM_SIZE);
+    indexLength = getInt(args, "indexLength", NGramTokenizer.DEFAULT_INDEX_LENGTH);
     if (!args.isEmpty()) {
       throw new IllegalArgumentException("Unknown parameters: " + args);
     }
@@ -53,9 +55,9 @@ public class NGramTokenizerFactory extends TokenizerFactory {
   @Override
   public Tokenizer create(AttributeFactory factory, Reader input) {
     if (luceneMatchVersion.onOrAfter(Version.LUCENE_4_4_0)) {
-      return new NGramTokenizer(luceneMatchVersion, factory, input, minGramSize, maxGramSize);
+      return new NGramTokenizer(luceneMatchVersion, factory, input, minGramSize, maxGramSize, indexLength);
     } else {
-      return new Lucene43NGramTokenizer(factory, input, minGramSize, maxGramSize);
+      return new Lucene43NGramTokenizer(factory, input, minGramSize, maxGramSize, indexLength);
     }
   }
 }

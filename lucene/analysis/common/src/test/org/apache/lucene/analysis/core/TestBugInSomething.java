@@ -249,7 +249,7 @@ public class TestBugInSomething extends BaseTokenStreamTestCase {
     Analyzer analyzer = new Analyzer() {
       @Override
       protected TokenStreamComponents createComponents(String fieldName, Reader reader) {
-        Tokenizer tokenizer = new EdgeNGramTokenizer(reader, 2, 94);
+        Tokenizer tokenizer = new EdgeNGramTokenizer(reader, 2, 94,1024);
         //TokenStream stream = new SopTokenFilter(tokenizer);
         TokenStream stream = new ShingleFilter(tokenizer, 5);
         //stream = new SopTokenFilter(stream);

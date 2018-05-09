@@ -46,7 +46,7 @@ public class EdgeNGramTokenizerTest extends BaseTokenStreamTestCase {
   public void testInvalidInput() throws Exception {
     boolean gotException = false;
     try {
-      new EdgeNGramTokenizer(input, 0, 0);
+      new EdgeNGramTokenizer(input, 0, 0, 1024);
     } catch (IllegalArgumentException e) {
       gotException = true;
     }
@@ -56,7 +56,7 @@ public class EdgeNGramTokenizerTest extends BaseTokenStreamTestCase {
   public void testInvalidInput2() throws Exception {
     boolean gotException = false;
     try {
-      new EdgeNGramTokenizer(input, 2, 1);
+      new EdgeNGramTokenizer(input, 2, 1, 1024);
     } catch (IllegalArgumentException e) {
       gotException = true;
     }
@@ -66,7 +66,7 @@ public class EdgeNGramTokenizerTest extends BaseTokenStreamTestCase {
   public void testInvalidInput3() throws Exception {
     boolean gotException = false;
     try {
-      new EdgeNGramTokenizer(input, -1, 2);
+      new EdgeNGramTokenizer(input, -1, 2, 1024);
     } catch (IllegalArgumentException e) {
       gotException = true;
     }
@@ -74,7 +74,7 @@ public class EdgeNGramTokenizerTest extends BaseTokenStreamTestCase {
   }
 
   public void testFrontUnigram() throws Exception {
-    EdgeNGramTokenizer tokenizer = new EdgeNGramTokenizer(input, 1, 1);
+    EdgeNGramTokenizer tokenizer = new EdgeNGramTokenizer(input, 1, 1, 1024);
     assertTokenStreamContents(tokenizer, new String[]{"a"}, new int[]{0}, new int[]{1}, 5 /* abcde */);
   }
 
@@ -84,12 +84,12 @@ public class EdgeNGramTokenizerTest extends BaseTokenStreamTestCase {
   }
 
   public void testOversizedNgrams() throws Exception {
-    EdgeNGramTokenizer tokenizer = new EdgeNGramTokenizer(input, 6, 6);
+    EdgeNGramTokenizer tokenizer = new EdgeNGramTokenizer(input, 6, 6, 1024);
     assertTokenStreamContents(tokenizer, new String[0], new int[0], new int[0], 5 /* abcde */);
   }
 
   public void testFrontRangeOfNgrams() throws Exception {
-    EdgeNGramTokenizer tokenizer = new EdgeNGramTokenizer(input, 1, 3);
+    EdgeNGramTokenizer tokenizer = new EdgeNGramTokenizer(input, 1, 3, 1024);
     assertTokenStreamContents(tokenizer, new String[]{"a","ab","abc"}, new int[]{0,0,0}, new int[]{1,2,3}, 5 /* abcde */);
   }
 
@@ -99,7 +99,7 @@ public class EdgeNGramTokenizerTest extends BaseTokenStreamTestCase {
   }
   
   public void testReset() throws Exception {
-    EdgeNGramTokenizer tokenizer = new EdgeNGramTokenizer(input, 1, 3);
+    EdgeNGramTokenizer tokenizer = new EdgeNGramTokenizer(input, 1, 3, 1024);
     assertTokenStreamContents(tokenizer, new String[]{"a","ab","abc"}, new int[]{0,0,0}, new int[]{1,2,3}, 5 /* abcde */);
     tokenizer.setReader(new StringReader("abcde"));
     assertTokenStreamContents(tokenizer, new String[]{"a","ab","abc"}, new int[]{0,0,0}, new int[]{1,2,3}, 5 /* abcde */);
@@ -114,7 +114,7 @@ public class EdgeNGramTokenizerTest extends BaseTokenStreamTestCase {
       Analyzer a = new Analyzer() {
         @Override
         protected TokenStreamComponents createComponents(String fieldName, Reader reader) {
-          Tokenizer tokenizer = new EdgeNGramTokenizer(reader, min, max);
+          Tokenizer tokenizer = new EdgeNGramTokenizer(reader, min, max, 1024);
           return new TokenStreamComponents(tokenizer, tokenizer);
         }    
       };
@@ -145,7 +145,7 @@ public class EdgeNGramTokenizerTest extends BaseTokenStreamTestCase {
                               null,
                               false);
 
-    tokenizer = new EdgeNGramTokenizer(TEST_VERSION_CURRENT, new StringReader("abcde"), 1, 3);
+    tokenizer = new EdgeNGramTokenizer(TEST_VERSION_CURRENT, new StringReader("abcde"), 1, 3, 1024);
     assertTokenStreamContents(tokenizer,
                               new String[]{"a","ab","abc"},
                               new int[]{0,0,0},

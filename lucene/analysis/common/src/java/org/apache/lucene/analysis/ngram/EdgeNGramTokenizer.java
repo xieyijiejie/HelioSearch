@@ -49,16 +49,16 @@ public class EdgeNGramTokenizer extends NGramTokenizer {
    * @param minGram the smallest n-gram to generate
    * @param maxGram the largest n-gram to generate
    */
-  public EdgeNGramTokenizer(Reader input, int minGram, int maxGram) {
-    super(Version.LATEST, input, minGram, maxGram, true);
+  public EdgeNGramTokenizer(Reader input, int minGram, int maxGram, int indexLength) {
+    super(Version.LATEST, input, minGram, maxGram, indexLength, true);
   }
 
   /**
-   * @deprecated Use {@link #EdgeNGramTokenizer(Reader, int, int)}
+   * @deprecated Use {@link #EdgeNGramTokenizer(Reader, int, int, int)}
    */
   @Deprecated
-  public EdgeNGramTokenizer(Version version, Reader input, int minGram, int maxGram) {
-    super(version, input, minGram, maxGram, true);
+  public EdgeNGramTokenizer(Version version, Reader input, int minGram, int maxGram, int indexLength) {
+    super(version, input, minGram, maxGram, indexLength, true);
   }
 
   /**
@@ -69,16 +69,16 @@ public class EdgeNGramTokenizer extends NGramTokenizer {
    * @param minGram the smallest n-gram to generate
    * @param maxGram the largest n-gram to generate
    */
-  public EdgeNGramTokenizer(AttributeFactory factory, Reader input, int minGram, int maxGram) {
-    super(Version.LATEST, factory, input, minGram, maxGram, true);
+  public EdgeNGramTokenizer(AttributeFactory factory, Reader input, int minGram, int maxGram, int indexLength) {
+    super(Version.LATEST, factory, input, minGram, maxGram, indexLength, true);
   }
 
   /**
-   * @deprecated Use {@link #EdgeNGramTokenizer(AttributeFactory, Reader, int, int)}
+   * @deprecated Use {@link #EdgeNGramTokenizer(AttributeFactory, Reader, int, int, int)}
    */
   @Deprecated
-  public EdgeNGramTokenizer(Version version, AttributeFactory factory, Reader input, int minGram, int maxGram) {
-    super(version, factory, input, minGram, maxGram, true);
+  public EdgeNGramTokenizer(Version version, AttributeFactory factory, Reader input, int minGram, int maxGram, int indexLength) {
+    super(version, factory, input, minGram, maxGram, indexLength, true);
   }
 
 }

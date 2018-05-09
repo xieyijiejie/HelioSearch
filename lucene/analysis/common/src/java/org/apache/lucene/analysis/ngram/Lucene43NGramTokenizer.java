@@ -32,8 +32,9 @@ import org.apache.lucene.util.AttributeFactory;
 public final class Lucene43NGramTokenizer extends Tokenizer {
   public static final int DEFAULT_MIN_NGRAM_SIZE = 1;
   public static final int DEFAULT_MAX_NGRAM_SIZE = 2;
+  public static final int DEFAULT_INDEX_LENGTH = 1024;
 
-  private int minGram, maxGram;
+  private int minGram, maxGram, indexLength;
   private int gramSize;
   private int pos;
   private int inLen; // length of the input AFTER trim()
@@ -49,10 +50,11 @@ public final class Lucene43NGramTokenizer extends Tokenizer {
    * @param input {@link Reader} holding the input to be tokenized
    * @param minGram the smallest n-gram to generate
    * @param maxGram the largest n-gram to generate
+   * @param indexLength the largest size be indexed
    */
-  public Lucene43NGramTokenizer(Reader input, int minGram, int maxGram) {
+  public Lucene43NGramTokenizer(Reader input, int minGram, int maxGram, int indexLength) {
     super(input);
-    init(minGram, maxGram);
+    init(minGram, maxGram, indexLength);
   }
 
   /**
@@ -61,10 +63,11 @@ public final class Lucene43NGramTokenizer extends Tokenizer {
    * @param input {@link Reader} holding the input to be tokenized
    * @param minGram the smallest n-gram to generate
    * @param maxGram the largest n-gram to generate
+   * @param indexLength the largest size be indexed
    */
-  public Lucene43NGramTokenizer(AttributeFactory factory, Reader input, int minGram, int maxGram) {
+  public Lucene43NGramTokenizer(AttributeFactory factory, Reader input, int minGram, int maxGram, int indexLength) {
     super(factory, input);
-    init(minGram, maxGram);
+    init(minGram, maxGram, indexLength);
   }
 
   /**
@@ -72,18 +75,22 @@ public final class Lucene43NGramTokenizer extends Tokenizer {
    * @param input {@link Reader} holding the input to be tokenized
    */
   public Lucene43NGramTokenizer(Reader input) {
-    this(input, DEFAULT_MIN_NGRAM_SIZE, DEFAULT_MAX_NGRAM_SIZE);
+    this(input, DEFAULT_MIN_NGRAM_SIZE, DEFAULT_MAX_NGRAM_SIZE, DEFAULT_INDEX_LENGTH);
   }
   
-  private void init(int minGram, int maxGram) {
+  private void init(int minGram, int maxGram, int indexLength) {
     if (minGram < 1) {
       throw new IllegalArgumentException("minGram must be greater than zero");
     }
     if (minGram > maxGram) {
       throw new IllegalArgumentException("minGram must not be greater than maxGram");
     }
+    if(indexLength < 1){
+      throw new IllegalArgumentException("indexLength must not be greater than 0");
+    }
     this.minGram = minGram;
     this.maxGram = maxGram;
+    this.indexLength = indexLength;
   }
 
   /** Returns the next token in the stream, or null at EOS. */
@@ -93,7 +100,7 @@ public final class Lucene43NGramTokenizer extends Tokenizer {
     if (!started) {
       started = true;
       gramSize = minGram;
-      char[] chars = new char[1024];
+      char[] chars = new char[indexLength];
       charsRead = 0;
       // TODO: refactor to a shared readFully somewhere:
       while (charsRead < chars.length) {
